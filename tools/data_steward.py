@@ -10,6 +10,8 @@ from typing import Optional
 
 import pandas as pd
 
+ANALYSIS_OUTPUT_PATH = "data/analysis_inforce.csv"
+
 
 def _load_inforce(path: str) -> pd.DataFrame:
     """Load CSV and ensure Policy_Number is string (converts from int if needed)."""
@@ -19,7 +21,7 @@ def _load_inforce(path: str) -> pd.DataFrame:
     return df
 
 
-def profile_dataset(data_path: str = "data/uploaded_inforce.csv") -> str:
+def profile_dataset(data_path: str = "data/synthetic_inforce.csv") -> str:
     """
     Profile the dataset and return descriptive statistics as a JSON string.
 
@@ -56,7 +58,7 @@ def profile_dataset(data_path: str = "data/uploaded_inforce.csv") -> str:
     return json.dumps(result, indent=2)
 
 
-def run_actuarial_data_checks(data_path: str = "data/uploaded_inforce.csv") -> str:
+def run_actuarial_data_checks(data_path: str = "data/synthetic_inforce.csv") -> str:
     """
     Validate the dataset against actuarial rules and return PASS/FAIL with specific issues.
     """
@@ -202,7 +204,7 @@ def create_categorical_bands(
     strategy: str,
     bins: Optional[int] = None,
     custom_bins: Optional[list] = None,
-    source_path: str = "data/uploaded_inforce.csv",
+    source_path: str = "data/synthetic_inforce.csv",
     output_path: str = "data/analysis_inforce.csv",
 ) -> str:
     """
@@ -257,6 +259,8 @@ def create_categorical_bands(
     except Exception as e:
         return json.dumps({"error": f"Banding failed: {str(e)}"}, indent=2)
 
+    # Pipeline contract: all engineered outputs are written to analysis_inforce.csv.
+    output_path = ANALYSIS_OUTPUT_PATH
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
@@ -295,6 +299,8 @@ def regroup_categorical_features(
     new_col = f"{source_column}_regrouped"
     df[new_col] = df[source_column].astype(str).replace(mapping_dict)
 
+    # Pipeline contract: all engineered outputs are written to analysis_inforce.csv.
+    output_path = ANALYSIS_OUTPUT_PATH
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)

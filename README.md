@@ -54,14 +54,21 @@ This prevents degenerate zero-claim cohorts from collapsing to unusable bounds a
 ```text
 experience-study-ai-copilot/
 ├── agents/
-│   └── schemas.py              # Pydantic contracts between tools and AI agents
+│   ├── schemas.py              # Pydantic contracts between tools and AI agents
+│   ├── agent_steward.py        # Data Steward agent (profiling/validation/banding)
+│   ├── agent_actuary.py        # Lead Actuary agent (A/E sweep interpretation)
+│   ├── agent_analyst.py        # Data Analyst agent (visualization & reporting)
+│   └── orchestrator.py         # Supervisor that routes DATA_PREP / ANALYSIS / VISUALIZE / BOTH
 ├── data/
-│   ├── synthetic_inforce.csv   # synthetic actuarial dataset
-│   └── analysis_inforce.csv    # engineered dataset used for actuarial sweeps
+│   ├── synthetic_inforce.csv   # synthetic actuarial dataset (raw inforce)
+│   ├── analysis_inforce.csv    # engineered dataset used for actuarial sweeps
+│   └── sweep_summary.csv       # aggregated cohort-level A/E summary used for visualization
 ├── tools/
 │   ├── data_steward.py         # data validation + feature engineering
-│   └── insight_engine.py       # actuarial sweep engine + Bayesian A/E math core
-├── main.py                     # current app/entry script
+│   ├── insight_engine.py       # actuarial sweep engine + Bayesian A/E math core
+│   └── visualization.py        # Plotly-based scatter/treemap visualization utilities
+├── chat.py                     # terminal copilot entrypoint
+├── main.py                     # current (Streamlit) app/entry script
 ├── pyproject.toml
 ├── uv.lock
 └── README.md
@@ -70,7 +77,7 @@ experience-study-ai-copilot/
 ### Tool Roles
 
 - **`tools/data_steward.py` — Sanitizer/Engineer**
-  - Profiles uploaded inforce data
+  - Profiles raw inforce data (by default `data/synthetic_inforce.csv`)
   - Runs actuarial validation checks (types, value ranges, logic checks)
   - Creates categorical bands and regrouped features
   - Writes transformed output to `data/analysis_inforce.csv` (never overwriting raw source input)
@@ -78,8 +85,37 @@ experience-study-ai-copilot/
 - **`tools/insight_engine.py` — Actuarial Math Core**
   - Computes Bayesian mortality-rate credible intervals
   - Computes A/E confidence intervals (count and amount)
-  - Executes dimensional sweeps across cohort intersections
+  - Executes dimensional sweeps across cohort intersections using the processed dataset (`data/analysis_inforce.csv`)
   - Returns structured JSON for downstream agent interpretation and UI rendering
+
+### Agent Roles
+
+- **`agents/agent_steward.py` — Data Steward Agent**
+  - Uses schema-driven tool calling for:
+    - dataset profiling
+    - actuarial data checks (including MOC integrity)
+    - categorical banding for engineered analysis features
+  - Confirms applied transformations and output paths
+
+- **`agents/agent_actuary.py` — Lead Actuary Agent**
+  - Calls `run_dimensional_sweep` via schema-bound tools
+  - Compares `AE_Ratio_Amount` (financial risk) vs `AE_Ratio_Count` (selection risk)
+  - Uses cautious language when 95% CIs are wide or span 1.0
+
+- **`agents/agent_analyst.py` — Data Analyst Agent**
+  - Uses `VisualizationSchema` with `chart_type` and `metric` to choose tools
+  - Calls `generate_univariate_report` (scatter + table) or `generate_treemap_report`
+  - Always reads from the aggregated sweep file (`data/sweep_summary.csv`) rather than raw inforce data
+  - Returns concise confirmations that charts were generated and opened
+
+- **`agents/orchestrator.py` — Study Supervisor**
+  - Classifies requests into:
+    - `DATA_PREP`
+    - `ANALYSIS`
+    - `VISUALIZE`
+    - `BOTH` (sequential handoff)
+  - Routes to the Steward, Actuary, Analyst, or a Steward→Actuary pipeline
+  - Returns a consolidated natural-language response where appropriate
 
 ---
 
@@ -109,6 +145,14 @@ Then excludes actuarial measure columns (`MAC`, `MOC`, `MEC`, `MAF`, `MEF`, etc.
 - Lower values for exploratory signal detection
 - Higher values for credibility-focused, high-stability output
 
+### Dynamic Ranking and Result Control
+
+Dimensional sweep supports runtime ranking controls:
+
+- `sort_by`: rank by `AE_Ratio_Amount`, `AE_Ratio_Count`, `Sum_MAF`, etc.
+- `top_n`: control how many cohort rows are returned
+- `filters`: apply pandas query filters before aggregation
+
 ---
 
 ## Setup
@@ -133,6 +177,31 @@ If your current entrypoint is `main.py` (as in this repository state):
 uv run streamlit run main.py
 ```
 
+### 3) Run Agent Layer (optional CLI tests)
+
+Run each agent module directly to validate tool integration and orchestration:
+
+```bash
+uv run python agents/agent_steward.py
+uv run python agents/agent_actuary.py
+uv run python agents/orchestrator.py
+```
+
+Or run the continuous terminal copilot:
+
+```bash
+uv run python chat.py
+```
+
+### 4) Configure OpenAI access
+
+Agents use the official OpenAI Python SDK with dotenv-based configuration.  
+Set your key once in `.env`:
+
+```env
+OPENAI_API_KEY=sk-...
+```
+
 ---
 
 ## Output Contract (Dimensional Sweep)
@@ -144,6 +213,27 @@ The actuarial sweep returns JSON records containing cohort definition, actual/ex
 - `Sum_MAF`, `Sum_MEF`
 - `AE_Ratio_Count`, `AE_Ratio_Amount`
 - Count CI lower/upper and Amount CI lower/upper (95%)
+
+Typical sweep payload shape:
+
+```json
+{
+  "results": [
+    {
+      "Dimensions": "Risk_Class=Standard Plus | Issue_Age_band=(45.0, 65.0]",
+      "Sum_MAC": 6,
+      "Sum_MOC": 481.67,
+      "Sum_MEC": 1.97,
+      "Sum_MAF": 4300000.0,
+      "Sum_MEF": 1338984.63,
+      "AE_Ratio_Count": 3.63,
+      "AE_Ratio_Amount": 3.21,
+      "AE_Count_CI": [1.52, 7.44],
+      "AE_Amount_CI": [1.34, 6.57]
+    }
+  ]
+}
+```
 
 This contract is defined in `agents/schemas.py` and consumed by AI agents for deterministic, auditable analysis workflows.
 

@@ -7,7 +7,11 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,17 +30,17 @@ Analyze A/E (Actual-to-Expected) outputs rigorously. Always compare AE_Ratio_Amo
 
 Be analytical, precise, and cautious. Never call a trend "certain" when the 95%
 confidence interval is very wide or spans 1.0.
+
+When summarizing results, use these exact definitions: MAC = Actual Death Count. MOC = Total Policy Exposure (Years). MEC = Expected Death Count. MAF = Actual Claim Amount ($). MEF = Expected Claim Amount ($).
 """.strip()
 
 
 class ActuaryAgent:
     """Agent wrapper that routes actuarial questions to dimensional sweep tooling."""
 
-    def __init__(self, model: str = "gpt-4.1-mini") -> None:
+    def __init__(self, model: str = "gpt-4o") -> None:
         self.model = model
-        self.client: Optional[OpenAI] = None
-        if os.getenv("OPENAI_API_KEY"):
-            self.client = OpenAI()
+        self.client: OpenAI = client
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "run_dimensional_sweep": run_dimensional_sweep,
@@ -144,10 +148,10 @@ class ActuaryAgent:
             "Please specify sweep depth, min_mac, and preferred ranking metric."
         )
 
-    def respond(self, user_message: str) -> str:
-        """Handle message with tool-calling LLM; fall back deterministically if needed."""
-        if self.client is None:
-            return self._fallback_route(user_message)
+    def run(self, user_message: str) -> str:
+        """Handle message with OpenAI tool-calling."""
+        if not os.getenv("OPENAI_API_KEY"):
+            return "OPENAI_API_KEY is missing. Add it to .env before running this agent."
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -155,12 +159,16 @@ class ActuaryAgent:
         ]
 
         for _ in range(4):
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self._tools_spec(),
-                tool_choice="auto",
-            )
+            try:
+                completion = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=self._tools_spec(),
+                    tool_choice="auto",
+                )
+            except Exception:
+                # Keep deterministic local usability when network/proxy is unavailable.
+                return self._fallback_route(user_message)
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []
 
@@ -189,6 +197,10 @@ class ActuaryAgent:
 
         return "Unable to complete request within tool-calling loop."
 
+    def respond(self, user_message: str) -> str:
+        """Backward-compatible alias."""
+        return self.run(user_message)
+
 
 if __name__ == "__main__":
     agent = ActuaryAgent()
@@ -200,6 +212,6 @@ if __name__ == "__main__":
     )
 
     print("=== Test Case 1 (1-Way Sweep) ===")
-    print(agent.respond(msg_1))
+    print(agent.run(msg_1))
     print("\n=== Test Case 2 (Deep Dive) ===")
-    print(agent.respond(msg_2))
+    print(agent.run(msg_2))

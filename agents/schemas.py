@@ -1,14 +1,14 @@
 """Pydantic schemas defining tool-call contracts for AI agents."""
 
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 
 
 class ProfileDatasetSchema(BaseModel):
     """Schema for profiling raw inforce data."""
 
     data_path: str = Field(
-        default="data/uploaded_inforce.csv",
+        default="data/synthetic_inforce.csv",
         description="Path to the source CSV file to profile.",
     )
 
@@ -16,6 +16,10 @@ class ProfileDatasetSchema(BaseModel):
 class FeatureEngineeringSchema(BaseModel):
     """Schema for creating bands or regrouping categories."""
 
+    data_path: str = Field(
+        default="data/synthetic_inforce.csv",
+        description="Source CSV path for feature engineering (alias of source_path).",
+    )
     operation: str = Field(
         ...,
         description="Feature engineering operation. Use 'create_bands' or 'regroup_categories'.",
@@ -41,13 +45,17 @@ class FeatureEngineeringSchema(BaseModel):
         description="Mapping dictionary for regroup_categories (e.g., {'Standard Plus': 'Standard'}).",
     )
     source_path: str = Field(
-        default="data/uploaded_inforce.csv",
+        default="data/synthetic_inforce.csv",
         description="Input CSV path for transformation.",
     )
     output_path: str = Field(
         default="data/analysis_inforce.csv",
         description="Output CSV path to save transformed data.",
     )
+
+
+class CategoricalBandingSchema(FeatureEngineeringSchema):
+    """Alias schema used by steward tool-calling for categorical banding/regrouping."""
 
 
 class DimensionalSweepSchema(BaseModel):
@@ -96,4 +104,25 @@ class DimensionalSweepSchema(BaseModel):
             "The tool returns JSON objects where each object represents one cohort with "
             "Dimensions, actual/expected counts and amounts, A/E ratios, and 95% credible interval bounds."
         ),
+    )
+    data_path: str = Field(
+        default="data/analysis_inforce.csv",
+        description="Processed input CSV used for actuarial dimensional sweeps.",
+    )
+
+
+class VisualizationSchema(BaseModel):
+    """Schema for visualization tool calls (scatter vs treemap)."""
+
+    chart_type: Literal["scatter", "treemap"] = Field(
+        ...,
+        description="Visualization type to generate: 'scatter' (univariate A/E) or 'treemap' (hierarchical risk view).",
+    )
+    metric: Literal["count", "amount"] = Field(
+        default="amount",
+        description="Metric to visualize: 'count' uses MAC/MEC, 'amount' uses MAF/MEF.",
+    )
+    data_path: str = Field(
+        default="data/sweep_summary.csv",
+        description="Aggregated sweep CSV used as the visualization data source.",
     )

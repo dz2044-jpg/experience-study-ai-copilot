@@ -7,18 +7,18 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-try:
-    from agents.schemas import ProfileDatasetSchema, CategoricalBandingSchema
-except ImportError:
-    # Backward-compatible alias until dedicated schema is defined.
-    from agents.schemas import ProfileDatasetSchema, FeatureEngineeringSchema as CategoricalBandingSchema
+from agents.schemas import ProfileDatasetSchema, CategoricalBandingSchema
 
 from tools.data_steward import (
     create_categorical_bands,
@@ -42,11 +42,9 @@ Always confirm what data transformations were applied and where output was saved
 class DataStewardAgent:
     """Agent wrapper that routes user requests to deterministic steward tools."""
 
-    def __init__(self, model: str = "gpt-4.1-mini") -> None:
+    def __init__(self, model: str = "gpt-4o") -> None:
         self.model = model
-        self.client: Optional[OpenAI] = None
-        if os.getenv("OPENAI_API_KEY"):
-            self.client = OpenAI()
+        self.client: OpenAI = client
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "profile_dataset": profile_dataset,
@@ -90,6 +88,11 @@ class DataStewardAgent:
         if tool_name == "create_categorical_bands" and "operation" in args:
             # If FeatureEngineeringSchema is used as alias, strip non-function key.
             args = {k: v for k, v in args.items() if k != "operation"}
+        if tool_name == "create_categorical_bands" and "data_path" in args and "source_path" not in args:
+            # Schema alias compatibility: data_path maps to source_path.
+            args["source_path"] = args.pop("data_path")
+        elif "data_path" in args:
+            args.pop("data_path")
 
         try:
             return self.tool_handlers[tool_name](**args)
@@ -144,10 +147,10 @@ class DataStewardAgent:
             "Please specify a dataset path and transformation request."
         )
 
-    def respond(self, user_message: str) -> str:
-        """Handle a user message via tool-calling LLM, with deterministic fallback."""
-        if self.client is None:
-            return self._fallback_route(user_message)
+    def run(self, user_message: str) -> str:
+        """Handle a user message using OpenAI tool-calling."""
+        if not os.getenv("OPENAI_API_KEY"):
+            return "OPENAI_API_KEY is missing. Add it to .env before running this agent."
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -155,12 +158,16 @@ class DataStewardAgent:
         ]
 
         for _ in range(4):
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self._tools_spec(),
-                tool_choice="auto",
-            )
+            try:
+                completion = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=self._tools_spec(),
+                    tool_choice="auto",
+                )
+            except Exception:
+                # Keep deterministic local usability when network/proxy is unavailable.
+                return self._fallback_route(user_message)
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []
 
@@ -189,6 +196,10 @@ class DataStewardAgent:
 
         return "Unable to complete request within tool-calling loop."
 
+    def respond(self, user_message: str) -> str:
+        """Backward-compatible alias."""
+        return self.run(user_message)
+
 
 if __name__ == "__main__":
     agent = DataStewardAgent()
@@ -200,6 +211,6 @@ if __name__ == "__main__":
     msg_2 = "Create 5 equal-width bands for the Issue_Age column."
 
     print("=== Test Case 1 (Profiling) ===")
-    print(agent.respond(msg_1))
+    print(agent.run(msg_1))
     print("\n=== Test Case 2 (Banding) ===")
-    print(agent.respond(msg_2))
+    print(agent.run(msg_2))
