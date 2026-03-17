@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Literal, Optional
@@ -22,11 +21,11 @@ from agents.agent_actuary import ActuaryAgent
 from agents.agent_analyst import AnalystAgent
 from agents.agent_steward import DataStewardAgent
 
-Intent = Literal["DATA_PREP", "ANALYSIS", "BOTH", "VISUALIZE"]
+Intent = Literal["GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE"]
 
 
 class StudyOrchestrator:
-    """Routes user requests to Data Steward, Lead Actuary, or both."""
+    """Routes user requests to Data Steward, Lead Actuary, Analyst, or general response."""
 
     def __init__(self, classifier_model: str = "gpt-5-nano") -> None:
         self.classifier_model = classifier_model
@@ -75,24 +74,31 @@ class StudyOrchestrator:
         if has_visualize:
             return "VISUALIZE"
         if has_prep and has_analysis:
-            return "BOTH"
+            # NO CHAINING: classify only the first logical step.
+            return "DATA_PREP"
         if has_prep:
             return "DATA_PREP"
-        return "ANALYSIS"
+        if has_analysis:
+            return "ANALYSIS"
+        return "GENERAL"
 
     def _classify_intent(self, user_query: str) -> Intent:
-        """Classify request into DATA_PREP, ANALYSIS, or BOTH."""
+        """Classify request into GENERAL, DATA_PREP, ANALYSIS, or VISUALIZE."""
         if not os.getenv("OPENAI_API_KEY"):
             return self._heuristic_classify(user_query)
 
         prompt = (
-            "Classify the user's request into exactly one label: DATA_PREP, ANALYSIS, BOTH, or VISUALIZE.\n"
-            "Definitions:\n"
-            "- DATA_PREP: profiling, validation, feature engineering (banding/regrouping).\n"
-            "- ANALYSIS: A/E sweeps, ratios, CI interpretation.\n"
-            "- BOTH: requires data prep then analysis.\n"
-            "- VISUALIZE: charts, plots, treemap, scatter, graphs, or visual reports.\n"
-            "Return JSON only, e.g. {\"intent\":\"VISUALIZE\"}."
+            "You are the Master Orchestrator for an Actuarial AI Copilot. "
+            "Classify the user's request into exactly one label: GENERAL, DATA_PREP, ANALYSIS, or VISUALIZE.\n\n"
+            "Definitions & Routing Boundaries:\n"
+            "- GENERAL: Questions about the tool, actuarial concepts, or casual conversation.\n"
+            "- DATA_PREP: Data profiling, validation, or feature engineering (banding/grouping). Routes to Data Steward.\n"
+            "- ANALYSIS: Running A/E calculations, dimensional sweeps, or statistical credibility checks. Routes to Lead Actuary.\n"
+            "- VISUALIZE: Generating charts, treemaps, scatter plots, or visual reports. Routes to Analyst Agent.\n\n"
+            "STRICT ORCHESTRATOR GUARDRAILS:\n"
+            "1. NO CHAINING: If the user asks for multiple steps (e.g., 'Group the data and then run a sweep'), you MUST classify ONLY the first logical step. We must execute one agent at a time.\n"
+            "2. NO MOONLIGHTING: Do not route math/sweeps to DATA_PREP. Do not route column manipulation to ANALYSIS.\n\n"
+            "Return JSON only, e.g., {\"intent\":\"DATA_PREP\"}."
         )
         try:
             completion = self.client.chat.completions.create(
@@ -110,7 +116,7 @@ class StudyOrchestrator:
         try:
             parsed = json.loads(content)
             intent = parsed.get("intent", "").upper()
-            if intent in {"DATA_PREP", "ANALYSIS", "BOTH", "VISUALIZE"}:
+            if intent in {"GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE"}:
                 return intent  # type: ignore[return-value]
         except json.JSONDecodeError:
             pass
@@ -121,6 +127,12 @@ class StudyOrchestrator:
         """Route a query to the appropriate specialized agent(s)."""
         intent = self._classify_intent(user_query)
 
+        if intent == "GENERAL":
+            return (
+                "I can help with data preparation, actuarial analysis, and visual reports. "
+                "Tell me which step you want to run first."
+            )
+
         if intent == "DATA_PREP":
             return self.data_steward.run(user_query)
 
@@ -129,38 +141,7 @@ class StudyOrchestrator:
 
         if intent == "VISUALIZE":
             return self.analyst_agent.run(user_query)
-
-        # BOTH: run steward first, then hand context to actuary.
-        steward_query = user_query
-        q = user_query.lower()
-        if "band" in q and "face amount" in q:
-            bins_match = re.search(r"\b(\d+)\b", q)
-            bins = bins_match.group(1) if bins_match else "4"
-            steward_query = f"Create {bins} equal-width bands for the Face_Amount column."
-
-        steward_response = self.data_steward.run(steward_query)
-
-        # Build a clear handoff prompt for the actuary.
-        if "1-way" in q and "worst" in q and "face amount" in q:
-            handoff_prompt = (
-                "Please run a high-level sweep on the data. "
-                "What is the worst-performing single cohort by Face Amount?"
-            )
-        else:
-            handoff_prompt = (
-                "Data preparation step is complete. Use the processed dataset and provide actuarial interpretation.\n\n"
-                f"Original user request:\n{user_query}\n\n"
-                f"Data Steward output:\n{steward_response}\n\n"
-                "Now run the appropriate A/E sweep and provide a concise professional summary."
-            )
-        actuary_response = self.actuary.run(handoff_prompt)
-
-        return (
-            "### Data Steward Output\n"
-            f"{steward_response}\n\n"
-            "### Lead Actuary Output\n"
-            f"{actuary_response}"
-        )
+        return self._heuristic_classify(user_query)
 
 
 if __name__ == "__main__":
