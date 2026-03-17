@@ -38,7 +38,7 @@ When summarizing results, use these exact definitions: MAC = Actual Death Count.
 class ActuaryAgent:
     """Agent wrapper that routes actuarial questions to dimensional sweep tooling."""
 
-    def __init__(self, model: str = "gpt-4o") -> None:
+    def __init__(self, model: str = "gpt-5.4") -> None:
         self.model = model
         self.client: OpenAI = client
 

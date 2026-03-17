@@ -28,7 +28,7 @@ Intent = Literal["DATA_PREP", "ANALYSIS", "BOTH", "VISUALIZE"]
 class StudyOrchestrator:
     """Routes user requests to Data Steward, Lead Actuary, or both."""
 
-    def __init__(self, classifier_model: str = "gpt-4o-mini") -> None:
+    def __init__(self, classifier_model: str = "gpt-5-nano") -> None:
         self.classifier_model = classifier_model
         self.client: OpenAI = client
 

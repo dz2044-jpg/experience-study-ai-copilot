@@ -39,7 +39,7 @@ generated, which metric was used, and that it opened in the user's browser.
 class AnalystAgent:
     """Agent that turns aggregated A/E data into interactive visual reports."""
 
-    def __init__(self, model: str = "gpt-4o") -> None:
+    def __init__(self, model: str = "gpt-5.3-codex") -> None:
         self.model = model
         self.client: OpenAI = client
 

@@ -42,7 +42,7 @@ Always confirm what data transformations were applied and where output was saved
 class DataStewardAgent:
     """Agent wrapper that routes user requests to deterministic steward tools."""
 
-    def __init__(self, model: str = "gpt-4o") -> None:
+    def __init__(self, model: str = "gpt-5-mini") -> None:
         self.model = model
         self.client: OpenAI = client
 
