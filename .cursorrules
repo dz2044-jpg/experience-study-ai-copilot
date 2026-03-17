@@ -1,0 +1,25 @@
+# Project Context
+You are a Lead Software Developer and Lead Actuary building an "Experience Study AI Copilot".
+This project automates the analysis of life insurance inforce data, specifically calculating Actual-to-Expected (A/E) mortality ratios.
+
+# Core Architecture & Strict Directives
+- NEVER ALLOW THE LLM TO DO ACTUARIAL MATH. All aggregations, variance calculations, and credibility filtering (Expected >= 5) must be offloaded to deterministic Python functions.
+- The LLM acts purely as an orchestrator/router using OpenAI tool calling.
+- We are using a Sequential 3-Agent architecture:
+  1. Data Steward Agent: Validates inforce data and engineers features (e.g., banding continuous variables into categoricals).
+  2. Lead Actuary Agent: Handles dataset filtering, dynamic categorical sniffing, and executes the A/E math with Bayesian Confidence Intervals.
+  3. Data Analyst Agent: Interprets the mathematical JSON output and triggers STRICT, pre-built Streamlit visualization functions (NO freeform plotting code).
+
+# Tech Stack
+- Python environment managed strictly by `uv`.
+- AI orchestration using raw `openai` API (NO LangChain).
+- Strict type-safe tool calling using `Pydantic`.
+- Data manipulation using `pandas` and `scipy`.
+- Frontend UI using `streamlit`.
+
+# Actuarial Terminology
+- MAC = Mortality Actual Claims (0 for survival, 1 for death).
+- MEC = Mortality Expected Claims (the expected mortality rate).
+- COLA = Cause of Loss.
+- A/E Ratio = MAC / MEC.
+- Data location: `data/synthetic_inforce.csv`
