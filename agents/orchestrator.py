@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import re
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -39,6 +40,7 @@ class StudyOrchestrator:
         """Fast deterministic fallback classifier when API key is unavailable."""
         q = user_query.lower()
         prep_hits = [
+            "read",
             "profile",
             "validate",
             "check",
@@ -46,6 +48,11 @@ class StudyOrchestrator:
             "regroup",
             "clean",
             "prepare",
+            "column",
+            "feature",
+            "bucket",
+            "dataset",
+            "inforce",
         ]
         analysis_hits = [
             "a/e",
@@ -56,6 +63,11 @@ class StudyOrchestrator:
             "worst-performing",
             "ratio",
             "cohort",
+            "mortality",
+            "exposure",
+            "calculate",
+            "run",
+            "trend",
         ]
         visualize_hits = [
             "chart",
@@ -66,6 +78,7 @@ class StudyOrchestrator:
             "scatter",
             "graph",
             "report",
+            "heatmap",
         ]
         has_prep = any(k in q for k in prep_hits)
         has_analysis = any(k in q for k in analysis_hits)
@@ -115,11 +128,14 @@ class StudyOrchestrator:
 
         try:
             parsed = json.loads(content)
-            intent = parsed.get("intent", "").upper()
+            intent = parsed.get("intent", "").strip().upper()
             if intent in {"GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE"}:
                 return intent  # type: ignore[return-value]
         except json.JSONDecodeError:
-            pass
+            # If model returned non-JSON text, recover by keyword extraction.
+            for label in ("GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE"):
+                if re.search(rf"\b{label}\b", content.upper()):
+                    return label  # type: ignore[return-value]
 
         return self._heuristic_classify(user_query)
 
@@ -128,9 +144,31 @@ class StudyOrchestrator:
         intent = self._classify_intent(user_query)
 
         if intent == "GENERAL":
+            # Secondary guardrail routing for ambiguous natural phrasing.
+            q = user_query.lower()
+            if any(
+                k in q
+                for k in (
+                    "read",
+                    "profile",
+                    "validate",
+                    "band",
+                    "regroup",
+                    "feature",
+                    "column",
+                    "bucket",
+                    "dataset",
+                    "inforce",
+                )
+            ):
+                return self.data_steward.run(user_query)
+            if any(k in q for k in ("a/e", "sweep", "ci", "confidence", "mortality", "ratio", "cohort", "trend")):
+                return self.actuary.run(user_query)
+            if any(k in q for k in ("chart", "plot", "visual", "treemap", "scatter", "graph", "heatmap")):
+                return self.analyst_agent.run(user_query)
             return (
-                "I can help with data preparation, actuarial analysis, and visual reports. "
-                "Tell me which step you want to run first."
+                "Tell me which step you want first: DATA_PREP, ANALYSIS, or VISUALIZE. "
+                "Example: 'Run a 2-way sweep with min_mac=2'."
             )
 
         if intent == "DATA_PREP":
