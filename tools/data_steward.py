@@ -1,7 +1,7 @@
 """
 Data Steward Agent backend: Deterministic functions for data validation and feature engineering.
 
-CRITICAL: Never overwrite original user-uploaded data. All outputs save to data/analysis_inforce.csv.
+CRITICAL: Never overwrite original user-uploaded data. All outputs save to data/output/analysis_inforce.csv.
 """
 
 import json
@@ -10,7 +10,7 @@ from typing import Optional
 
 import pandas as pd
 
-ANALYSIS_OUTPUT_PATH = "data/analysis_inforce.csv"
+ANALYSIS_OUTPUT_PATH = "data/output/analysis_inforce.csv"
 
 
 def _load_inforce(path: str) -> pd.DataFrame:
@@ -21,7 +21,7 @@ def _load_inforce(path: str) -> pd.DataFrame:
     return df
 
 
-def profile_dataset(data_path: str = "data/synthetic_inforce.csv") -> str:
+def profile_dataset(data_path: str = "data/input/synthetic_inforce.csv") -> str:
     """
     Profile the dataset and return descriptive statistics as a JSON string.
 
@@ -58,7 +58,7 @@ def profile_dataset(data_path: str = "data/synthetic_inforce.csv") -> str:
     return json.dumps(result, indent=2)
 
 
-def run_actuarial_data_checks(data_path: str = "data/synthetic_inforce.csv") -> str:
+def run_actuarial_data_checks(data_path: str = "data/input/synthetic_inforce.csv") -> str:
     """
     Validate the dataset against actuarial rules and return PASS/FAIL with specific issues.
     """
@@ -204,8 +204,8 @@ def create_categorical_bands(
     strategy: str,
     bins: Optional[int] = None,
     custom_bins: Optional[list] = None,
-    source_path: str = "data/synthetic_inforce.csv",
-    output_path: str = "data/analysis_inforce.csv",
+    source_path: str = "data/input/synthetic_inforce.csv",
+    output_path: str = "data/output/analysis_inforce.csv",
 ) -> str:
     """
     Create banded categorical column from a numeric source column.
@@ -277,8 +277,8 @@ def create_categorical_bands(
 def regroup_categorical_features(
     source_column: str,
     mapping_dict: dict[str, str],
-    source_path: str = "data/analysis_inforce.csv",
-    output_path: str = "data/analysis_inforce.csv",
+    source_path: str = "data/output/analysis_inforce.csv",
+    output_path: str = "data/output/analysis_inforce.csv",
 ) -> str:
     """
     Create regrouped categorical column using a mapping dictionary.
@@ -315,7 +315,7 @@ def regroup_categorical_features(
 
 
 if __name__ == "__main__":
-    data_path = "data/synthetic_inforce.csv"
+    data_path = "data/input/synthetic_inforce.csv"
 
     print("=== 1. profile_dataset ===")
     print(profile_dataset(data_path=data_path))
@@ -330,7 +330,7 @@ if __name__ == "__main__":
             strategy="custom",
             custom_bins=[0, 25, 45, 65, 100],
             source_path=data_path,
-            output_path="data/analysis_inforce.csv",
+            output_path="data/output/analysis_inforce.csv",
         )
     )
 
@@ -344,7 +344,7 @@ if __name__ == "__main__":
                 "Preferred": "Preferred",
                 "Preferred Plus": "Preferred",
             },
-            source_path="data/analysis_inforce.csv",
-            output_path="data/analysis_inforce.csv",
+            source_path="data/output/analysis_inforce.csv",
+            output_path="data/output/analysis_inforce.csv",
         )
     )

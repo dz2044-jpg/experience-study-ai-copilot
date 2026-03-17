@@ -75,7 +75,7 @@ class AnalystAgent:
 
         # Map visualization schema fields to underlying function signatures.
         metric = args.get("metric", "amount")
-        data_path = args.get("data_path", "data/sweep_summary.csv")
+        data_path = args.get("data_path", "data/output/sweep_summary.csv")
 
         try:
             if tool_name == "generate_univariate_report":

@@ -104,7 +104,7 @@ class DataStewardAgent:
         msg = user_message.lower()
 
         if "profile" in msg or "moc" in msg:
-            data_path = "data/uploaded_inforce.csv"
+            data_path = "data/input/synthetic_inforce.csv"
             path_match = re.search(r"(data/[\w./-]+\.csv)", user_message)
             if path_match:
                 data_path = path_match.group(1)
@@ -125,20 +125,20 @@ class DataStewardAgent:
             bins = 5 if "5" in msg else 4
             col_match = re.search(r"for the\s+([A-Za-z_][A-Za-z0-9_]*)\s+column", user_message, re.IGNORECASE)
             source_column = col_match.group(1) if col_match else "Issue_Age"
-            source_path = "data/uploaded_inforce.csv"
+            source_path = "data/input/synthetic_inforce.csv"
             if not Path(source_path).exists():
-                source_path = "data/synthetic_inforce.csv"
+                source_path = "data/input/synthetic_inforce.csv"
             result = create_categorical_bands(
                 source_column=source_column,
                 strategy="equal_width",
                 bins=bins,
                 source_path=source_path,
-                output_path="data/analysis_inforce.csv",
+                output_path="data/output/analysis_inforce.csv",
             )
             return (
                 f"Banding complete for `{source_column}` using equal-width `{bins}` bins.\n"
                 f"Source data: `{source_path}`.\n"
-                f"Transformation saved to `data/analysis_inforce.csv`.\n"
+                f"Transformation saved to `data/output/analysis_inforce.csv`.\n"
                 f"Tool JSON:\n{result}"
             )
 
@@ -206,7 +206,7 @@ if __name__ == "__main__":
 
     msg_1 = (
         "Please profile our synthetic inforce dataset located at "
-        "data/synthetic_inforce.csv. Let me know if the MOC column looks correct."
+        "data/input/synthetic_inforce.csv. Let me know if the MOC column looks correct."
     )
     msg_2 = "Create 5 equal-width bands for the Issue_Age column."
 

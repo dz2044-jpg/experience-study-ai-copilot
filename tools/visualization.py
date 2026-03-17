@@ -16,7 +16,7 @@ def _get_ci_columns(metric: str) -> tuple[str, str]:
     return "AE_Amount_CI_Lower", "AE_Amount_CI_Upper"
 
 
-def generate_univariate_report(data_path: str, metric: str = "amount") -> str:
+def generate_univariate_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
     """
     Generate an interactive HTML univariate A/E report and open it in the browser.
 
@@ -145,7 +145,7 @@ def generate_univariate_report(data_path: str, metric: str = "amount") -> str:
     )
 
     # Output HTML and open in browser
-    out_path = os.path.abspath("data/temp_univariate_report.html")
+    out_path = os.path.abspath("data/output/temp_univariate_report.html")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     fig.write_html(out_path)
     webbrowser.open("file://" + out_path)
@@ -153,7 +153,7 @@ def generate_univariate_report(data_path: str, metric: str = "amount") -> str:
     return f"Univariate report generated and opened: {out_path}"
 
 
-def generate_treemap_report(data_path: str, metric: str = "amount") -> str:
+def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
     """
     Generate a treemap A/E report and open it in the browser.
 
@@ -225,7 +225,7 @@ def generate_treemap_report(data_path: str, metric: str = "amount") -> str:
         ),
     )
 
-    out_path = os.path.abspath("data/temp_treemap_report.html")
+    out_path = os.path.abspath("data/output/temp_treemap_report.html")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     fig.write_html(out_path)
     webbrowser.open("file://" + out_path)

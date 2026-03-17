@@ -6,6 +6,7 @@ NEVER allow the LLM to perform actuarial math—all calculations are determinist
 """
 
 import json
+import re
 from itertools import combinations
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -137,6 +138,8 @@ VALID_SORT_COLUMNS = {
     "Sum_MEF",
 }
 
+SWEEP_OUTPUT_PATH = "data/output/sweep_summary.csv"
+
 
 def run_dimensional_sweep(
     depth: int = 1,
@@ -145,7 +148,7 @@ def run_dimensional_sweep(
     min_mac: int = 1,
     top_n: int = 20,
     sort_by: str = "AE_Ratio_Amount",
-    data_path: str = "data/analysis_inforce.csv",
+    data_path: str = "data/output/analysis_inforce.csv",
     confidence_level: float = 0.95,
 ) -> str:
     """
@@ -275,6 +278,32 @@ def run_dimensional_sweep(
     result_df = result_df.sort_values(sort_by, ascending=False)
     top_results = result_df.head(top_n)
 
+    # Persist sweep summary for downstream visualization tools.
+    summary_df = top_results.copy()
+    summary_df["AE_Count_CI_Lower"] = summary_df["AE_Count_CI"].apply(lambda x: x[0] if x else None)
+    summary_df["AE_Count_CI_Upper"] = summary_df["AE_Count_CI"].apply(lambda x: x[1] if x else None)
+    summary_df["AE_Amount_CI_Lower"] = summary_df["AE_Amount_CI"].apply(lambda x: x[0] if x else None)
+    summary_df["AE_Amount_CI_Upper"] = summary_df["AE_Amount_CI"].apply(lambda x: x[1] if x else None)
+    summary_df = summary_df.drop(columns=["AE_Count_CI", "AE_Amount_CI"])
+    # Name output by sweep depth + involved columns for differentiation.
+    involved_columns = selected_columns if selected_columns else dim_columns
+    columns_slug = "_".join(
+        re.sub(r"[^a-zA-Z0-9]+", "_", col).strip("_").lower() for col in involved_columns
+    )
+    if not columns_slug:
+        columns_slug = "all_dimensions"
+    if len(columns_slug) > 120:
+        columns_slug = columns_slug[:120].rstrip("_")
+
+    dynamic_out_path = Path(f"data/output/sweep_summary_{depth}_{columns_slug}.csv")
+    dynamic_out_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_df.to_csv(dynamic_out_path, index=False)
+
+    # Keep a stable latest alias for downstream defaults.
+    latest_out_path = Path(SWEEP_OUTPUT_PATH)
+    latest_out_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_df.to_csv(latest_out_path, index=False)
+
     # Convert to JSON-serializable format
     out_list = top_results.to_dict(orient="records")
     # Fix CI tuples (ensure floats)
@@ -288,7 +317,14 @@ def run_dimensional_sweep(
             float(rec["AE_Amount_CI"][1]) if rec["AE_Amount_CI"][1] is not None else None,
         ]
 
-    return json.dumps({"results": out_list}, indent=2)
+    return json.dumps(
+        {
+            "results": out_list,
+            "output_path": str(dynamic_out_path),
+            "latest_output_path": str(latest_out_path),
+        },
+        indent=2,
+    )
 
 
 if __name__ == "__main__":

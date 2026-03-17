@@ -8,7 +8,7 @@ class ProfileDatasetSchema(BaseModel):
     """Schema for profiling raw inforce data."""
 
     data_path: str = Field(
-        default="data/synthetic_inforce.csv",
+        default="data/input/synthetic_inforce.csv",
         description="Path to the source CSV file to profile.",
     )
 
@@ -17,7 +17,7 @@ class FeatureEngineeringSchema(BaseModel):
     """Schema for creating bands or regrouping categories."""
 
     data_path: str = Field(
-        default="data/synthetic_inforce.csv",
+        default="data/input/synthetic_inforce.csv",
         description="Source CSV path for feature engineering (alias of source_path).",
     )
     operation: str = Field(
@@ -45,11 +45,11 @@ class FeatureEngineeringSchema(BaseModel):
         description="Mapping dictionary for regroup_categories (e.g., {'Standard Plus': 'Standard'}).",
     )
     source_path: str = Field(
-        default="data/synthetic_inforce.csv",
+        default="data/input/synthetic_inforce.csv",
         description="Input CSV path for transformation.",
     )
     output_path: str = Field(
-        default="data/analysis_inforce.csv",
+        default="data/output/analysis_inforce.csv",
         description="Output CSV path to save transformed data.",
     )
 
@@ -106,7 +106,7 @@ class DimensionalSweepSchema(BaseModel):
         ),
     )
     data_path: str = Field(
-        default="data/analysis_inforce.csv",
+        default="data/output/analysis_inforce.csv",
         description="Processed input CSV used for actuarial dimensional sweeps.",
     )
 
@@ -123,6 +123,6 @@ class VisualizationSchema(BaseModel):
         description="Metric to visualize: 'count' uses MAC/MEC, 'amount' uses MAF/MEF.",
     )
     data_path: str = Field(
-        default="data/sweep_summary.csv",
+        default="data/output/sweep_summary.csv",
         description="Aggregated sweep CSV used as the visualization data source.",
     )
