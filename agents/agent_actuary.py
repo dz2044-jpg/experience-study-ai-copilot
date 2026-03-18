@@ -46,6 +46,11 @@ You must NEVER ask the user to clarify these columns. Treat these definitions as
 - MEF = Expected Claim Amount ($)
 - A/E Ratio by Count = sum(MAC) / sum(MEC)
 - A/E Ratio by Amount = sum(MAF) / sum(MEF)
+
+TOOL USAGE INSTRUCTIONS (DIMENSIONAL SWEEPS):
+When using the `run_dimensional_sweep` tool, you must strictly map the user's request to the correct `depth` parameter:
+1. Pairwise / 2-Way Sweeps on Multiple Columns: If the user asks for a "2-way sweep" or "pairwise sweep" across 3 or more columns (e.g., A, B, and C), you MUST set `depth=2` and pass all the requested columns into `selected_columns=['A', 'B', 'C']`. The tool will automatically handle calculating the pairs (A×B, A×C, B×C). 
+2. NEVER set `depth=3` or higher just because the user listed 3 columns. Only se
 """.strip()
 
 

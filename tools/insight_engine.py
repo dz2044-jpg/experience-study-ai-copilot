@@ -188,10 +188,6 @@ def run_dimensional_sweep(
             indent=2,
         )
 
-    # Precompute expected count (MOC * MEC) for aggregate A/E
-    df = df.copy()
-    df["_ExpCount"] = df["MOC"] * df["MEC"]
-
     combo_list = list(combinations(dim_columns, depth))
     all_results: List[dict] = []
 
@@ -202,7 +198,6 @@ def run_dimensional_sweep(
             "MEC": "sum",
             "MAF": "sum",
             "MEF": "sum",
-            "_ExpCount": "sum",
         }
         grouped = df.groupby(list(dim_cols), as_index=False).agg(agg_dict)
 
@@ -217,7 +212,7 @@ def run_dimensional_sweep(
         )
 
         # A/E point estimates
-        grouped["AE_Ratio_Count"] = grouped["Sum_MAC"] / grouped["_ExpCount"]
+        grouped["AE_Ratio_Count"] = grouped["Sum_MAC"] / grouped["Sum_MEC"]
         grouped["AE_Ratio_Amount"] = grouped["Sum_MAF"] / grouped["Sum_MEF"]
 
         # Beta CIs for each row
@@ -225,7 +220,7 @@ def run_dimensional_sweep(
             return compute_ae_ci(
                 mac=row["Sum_MAC"],
                 moc=row["Sum_MOC"],
-                mec=row["_ExpCount"],
+                mec=row["Sum_MEC"],
                 confidence_level=confidence_level,
             )
 
@@ -233,7 +228,7 @@ def run_dimensional_sweep(
             return compute_ae_ci_amount(
                 mac=row["Sum_MAC"],
                 moc=row["Sum_MOC"],
-                mec=row["_ExpCount"],
+                mec=row["Sum_MEC"],
                 actual_amount=row["Sum_MAF"],
                 expected_amount=row["Sum_MEF"],
                 confidence_level=confidence_level,
