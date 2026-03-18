@@ -1,0 +1,9 @@
+Policy_Number,Gender,Smoker,Risk_Class,Issue_Age,Issue_Age_band,Face_Amount,Duration,MEC,MAC,MOC,MEF,MAF,COLA
+P0001,F,No,Standard,31,25_45,200000,1,0.80,1,1.0,800,1200,Cancer
+P0002,F,Yes,Standard,33,25_45,300000,2,0.70,0,1.0,900,0,
+P0003,M,No,Preferred,52,45_65,400000,1,0.60,1,1.0,1000,1400,Natural
+P0004,M,Yes,Preferred,55,45_65,500000,3,0.90,0,1.0,1100,0,
+P0005,F,No,Preferred,36,25_45,600000,2,0.50,1,1.0,1200,1600,Accident
+P0006,F,Yes,Preferred,58,45_65,700000,4,0.40,0,1.0,1300,0,
+P0007,M,No,Standard,39,25_45,800000,1,0.30,1,1.0,1400,1800,Cancer
+P0008,M,Yes,Standard,60,45_65,900000,5,0.20,0,1.0,1500,0,
