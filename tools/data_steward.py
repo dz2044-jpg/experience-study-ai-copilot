@@ -16,6 +16,14 @@ ANALYSIS_OUTPUT_PATH = "data/output/analysis_inforce.csv"
 def _load_inforce(path: str) -> pd.DataFrame:
     """Load CSV and ensure Policy_Number is string (converts from int if needed)."""
     df = pd.read_csv(path)
+
+    # Enforce absolute numeric types for core actuarial columns.
+    ACTUARIAL_NUMERICS = ["MAC", "MEC", "MAF", "MEF", "MOC"]
+    for col in ACTUARIAL_NUMERICS:
+        if col in df.columns:
+            # Force to float64 to ensure downstream A/E math doesn't fail on categorical/int boundaries.
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
+
     if "Policy_Number" in df.columns and not pd.api.types.is_string_dtype(df["Policy_Number"]):
         df["Policy_Number"] = df["Policy_Number"].astype(str)
     return df
