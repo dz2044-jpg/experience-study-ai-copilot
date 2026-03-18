@@ -3,7 +3,6 @@
 import json
 import os
 import sys
-import re
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -127,7 +126,7 @@ class StudyOrchestrator:
             "- ANALYSIS: Running A/E calculations or dimensional sweeps. Routes to Lead Actuary.\n"
             "- VISUALIZE: Generating charts, treemaps, or visual reports. Routes to Analyst Agent.\n"
             "- CONTINUE: The user is answering a direct question, confirming an action (e.g., 'proceed', 'yes', 'option 1'), or providing a short reply to the previous output.\n\n"
-            "Return JSON only, e.g., {\"intent\":\"CONTINUE\"}."
+            "Return RAW JSON ONLY. Do not use markdown formatting. Do not wrap your response in ```json or ``` backticks. Example: {\"intent\": \"GENERAL\"}"
         )
         try:
             completion = self.client.chat.completions.create(
@@ -140,18 +139,30 @@ class StudyOrchestrator:
             )
         except Exception:
             return self._heuristic_classify(user_query)
-        content = completion.choices[0].message.content or "{}"
+        raw_response = completion.choices[0].message.content or "{}"
+        clean_response = raw_response.strip()
 
+        # Aggressively strip markdown code blocks if the model hallucinated them.
+        if clean_response.startswith("```json"):
+            clean_response = clean_response[7:]
+        elif clean_response.startswith("```"):
+            clean_response = clean_response[3:]
+
+        if clean_response.endswith("```"):
+            clean_response = clean_response[:-3]
+
+        clean_response = clean_response.strip()
+
+        # Safely attempt to parse cleaned JSON.
         try:
-            parsed = json.loads(content)
-            intent = parsed.get("intent", "").strip().upper()
+            response_json = json.loads(clean_response)
+            intent = str(response_json.get("intent", "GENERAL")).strip().upper()
             if intent in {"GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"}:
                 return intent  # type: ignore[return-value]
-        except json.JSONDecodeError:
-            # If model returned non-JSON text, recover by keyword extraction.
-            for label in ("GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"):
-                if re.search(rf"\b{label}\b", content.upper()):
-                    return label  # type: ignore[return-value]
+        except json.JSONDecodeError as exc:
+            # Keep conversation flowing even if classifier returns malformed JSON.
+            print(f"[Orchestrator Debug] JSON parsing failed: {exc}. Falling back to GENERAL.")
+            return "GENERAL"
 
         return self._heuristic_classify(user_query)
 
@@ -178,14 +189,17 @@ class StudyOrchestrator:
                     "inforce",
                 )
             ):
+                _LAST_ACTIVE_AGENT = "STEWARD"
                 return self.data_steward.run(user_query)
             if any(k in q for k in ("a/e", "sweep", "ci", "confidence", "mortality", "ratio", "cohort", "trend")):
+                _LAST_ACTIVE_AGENT = "ACTUARY"
                 return self.actuary.run(user_query)
             if any(k in q for k in ("chart", "plot", "visual", "treemap", "scatter", "graph", "heatmap")):
+                _LAST_ACTIVE_AGENT = "ANALYST"
                 return self.analyst_agent.run(user_query)
             return (
-                "Tell me which step you want first: DATA_PREP, ANALYSIS, or VISUALIZE. "
-                "Example: 'Run a 2-way sweep with min_mac=2'."
+                "I can help with data preparation, actuarial analysis, or visualization. "
+                "Share what you want to do, and I will route it."
             )
 
         if intent == "DATA_PREP":
@@ -201,6 +215,19 @@ class StudyOrchestrator:
             return self.analyst_agent.run(user_query)
 
         if intent == "CONTINUE":
+            # If a "continue" message actually contains a concrete new request
+            # (e.g., a sweep/analysis command), prioritize that intent.
+            followup_intent = self._heuristic_classify(user_query)
+            if followup_intent == "DATA_PREP":
+                _LAST_ACTIVE_AGENT = "STEWARD"
+                return self.data_steward.run(user_query)
+            if followup_intent == "ANALYSIS":
+                _LAST_ACTIVE_AGENT = "ACTUARY"
+                return self.actuary.run(user_query)
+            if followup_intent == "VISUALIZE":
+                _LAST_ACTIVE_AGENT = "ANALYST"
+                return self.analyst_agent.run(user_query)
+
             if _LAST_ACTIVE_AGENT == "STEWARD":
                 return self.data_steward.run(user_query)
             if _LAST_ACTIVE_AGENT == "ACTUARY":

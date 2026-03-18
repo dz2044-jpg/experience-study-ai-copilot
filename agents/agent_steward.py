@@ -161,6 +161,8 @@ class DataStewardAgent:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ]
+        last_tool_result: Optional[str] = None
+        seen_tool_calls: set[tuple[str, str]] = set()
 
         for _ in range(4):
             try:
@@ -189,8 +191,21 @@ class DataStewardAgent:
 
             for tool_call in tool_calls:
                 name = tool_call.function.name
-                args = json.loads(tool_call.function.arguments or "{}")
+                raw_args = tool_call.function.arguments or "{}"
+                call_signature = (name, raw_args)
+                if call_signature in seen_tool_calls:
+                    # Prevent infinite tool-call loops on repeated identical calls.
+                    if last_tool_result:
+                        return last_tool_result
+                    return (
+                        "I hit a repeated tool-call loop. Please rephrase your request with "
+                        "an explicit dataset path, e.g. `data/input/synthetic_inforce.csv`."
+                    )
+                seen_tool_calls.add(call_signature)
+
+                args = json.loads(raw_args)
                 tool_result = self._execute_tool(name, args)
+                last_tool_result = tool_result
                 messages.append(
                     {
                         "role": "tool",
@@ -199,7 +214,13 @@ class DataStewardAgent:
                     }
                 )
 
-        return "Unable to complete request within tool-calling loop."
+        if last_tool_result:
+            return last_tool_result
+        return (
+            "Unable to complete request within tool-calling loop. "
+            "Please provide an explicit CSV path and request (for example: "
+            "'Profile data/input/synthetic_inforce.csv')."
+        )
 
     def respond(self, user_message: str) -> str:
         """Backward-compatible alias."""
