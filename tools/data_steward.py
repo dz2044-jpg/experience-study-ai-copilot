@@ -5,10 +5,15 @@ CRITICAL: Never overwrite original user-uploaded data. All outputs save to data/
 """
 
 import json
+import os
+import time
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+
+# Records the exact time this script is loaded into memory for the chat session.
+_SESSION_START_TIME = time.time()
 
 ANALYSIS_OUTPUT_PATH = "data/output/analysis_inforce.csv"
 
@@ -27,6 +32,17 @@ def _load_inforce(path: str) -> pd.DataFrame:
     if "Policy_Number" in df.columns and not pd.api.types.is_string_dtype(df["Policy_Number"]):
         df["Policy_Number"] = df["Policy_Number"].astype(str)
     return df
+
+
+def _load_feature_engineering_frame(source_path: str, output_path: str) -> pd.DataFrame:
+    """
+    Session-aware load for feature engineering:
+    - If output exists and was modified during this session, append to it.
+    - Otherwise, start fresh from source input.
+    """
+    if os.path.exists(output_path) and os.path.getmtime(output_path) >= _SESSION_START_TIME:
+        return _load_inforce(output_path)
+    return _load_inforce(source_path)
 
 
 def profile_dataset(data_path: str = "data/input/synthetic_inforce.csv") -> str:
@@ -225,7 +241,9 @@ def create_categorical_bands(
     if not src.exists():
         return json.dumps({"error": f"Source file not found: {source_path}"}, indent=2)
 
-    df = _load_inforce(source_path)
+    # STEP 1: Session-aware load (append to current session output when present).
+    output_path = ANALYSIS_OUTPUT_PATH
+    df = _load_feature_engineering_frame(source_path=source_path, output_path=output_path)
 
     if source_column not in df.columns:
         return json.dumps(
@@ -267,8 +285,7 @@ def create_categorical_bands(
     except Exception as e:
         return json.dumps({"error": f"Banding failed: {str(e)}"}, indent=2)
 
-    # Pipeline contract: all engineered outputs are written to analysis_inforce.csv.
-    output_path = ANALYSIS_OUTPUT_PATH
+    # STEP 3: Save and replace output file with appended feature columns.
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
@@ -293,10 +310,12 @@ def regroup_categorical_features(
     Unmapped values are left as-is. Saves to output_path. Returns JSON success message.
     """
     src = Path(source_path)
-    if not src.exists():
+    if not src.exists() and not Path(ANALYSIS_OUTPUT_PATH).exists():
         return json.dumps({"error": f"Source file not found: {source_path}"}, indent=2)
 
-    df = _load_inforce(source_path)
+    # Session-aware load to preserve previously appended columns in this chat.
+    output_path = ANALYSIS_OUTPUT_PATH
+    df = _load_feature_engineering_frame(source_path=source_path, output_path=output_path)
 
     if source_column not in df.columns:
         return json.dumps(
@@ -307,8 +326,7 @@ def regroup_categorical_features(
     new_col = f"{source_column}_regrouped"
     df[new_col] = df[source_column].astype(str).replace(mapping_dict)
 
-    # Pipeline contract: all engineered outputs are written to analysis_inforce.csv.
-    output_path = ANALYSIS_OUTPUT_PATH
+    # Save and replace output file with appended feature columns.
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
