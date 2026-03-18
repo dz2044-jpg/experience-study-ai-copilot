@@ -22,7 +22,10 @@ from agents.agent_actuary import ActuaryAgent
 from agents.agent_analyst import AnalystAgent
 from agents.agent_steward import DataStewardAgent
 
-Intent = Literal["GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE"]
+Intent = Literal["GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"]
+
+# Tracks the last agent used so we can route continuations back to them
+_LAST_ACTIVE_AGENT = None
 
 
 class StudyOrchestrator:
@@ -83,6 +86,21 @@ class StudyOrchestrator:
         has_prep = any(k in q for k in prep_hits)
         has_analysis = any(k in q for k in analysis_hits)
         has_visualize = any(k in q for k in visualize_hits)
+        continuation_tokens = {
+            "yes",
+            "y",
+            "ok",
+            "okay",
+            "proceed",
+            "continue",
+            "go ahead",
+            "do it",
+            "option 1",
+            "option 2",
+            "option 3",
+        }
+        if q.strip() in continuation_tokens:
+            return "CONTINUE"
 
         if has_visualize:
             return "VISUALIZE"
@@ -96,22 +114,20 @@ class StudyOrchestrator:
         return "GENERAL"
 
     def _classify_intent(self, user_query: str) -> Intent:
-        """Classify request into GENERAL, DATA_PREP, ANALYSIS, or VISUALIZE."""
+        """Classify request into GENERAL, DATA_PREP, ANALYSIS, VISUALIZE, or CONTINUE."""
         if not os.getenv("OPENAI_API_KEY"):
             return self._heuristic_classify(user_query)
 
         prompt = (
             "You are the Master Orchestrator for an Actuarial AI Copilot. "
-            "Classify the user's request into exactly one label: GENERAL, DATA_PREP, ANALYSIS, or VISUALIZE.\n\n"
+            "Classify the user's request into exactly one label: GENERAL, DATA_PREP, ANALYSIS, VISUALIZE, or CONTINUE.\n\n"
             "Definitions & Routing Boundaries:\n"
             "- GENERAL: Questions about the tool, actuarial concepts, or casual conversation.\n"
-            "- DATA_PREP: Data profiling, validation, or feature engineering (banding/grouping). Routes to Data Steward.\n"
-            "- ANALYSIS: Running A/E calculations, dimensional sweeps, or statistical credibility checks. Routes to Lead Actuary.\n"
-            "- VISUALIZE: Generating charts, treemaps, scatter plots, or visual reports. Routes to Analyst Agent.\n\n"
-            "STRICT ORCHESTRATOR GUARDRAILS:\n"
-            "1. NO CHAINING: If the user asks for multiple steps (e.g., 'Group the data and then run a sweep'), you MUST classify ONLY the first logical step. We must execute one agent at a time.\n"
-            "2. NO MOONLIGHTING: Do not route math/sweeps to DATA_PREP. Do not route column manipulation to ANALYSIS.\n\n"
-            "Return JSON only, e.g., {\"intent\":\"DATA_PREP\"}."
+            "- DATA_PREP: Data profiling, validation, or feature engineering. Routes to Data Steward.\n"
+            "- ANALYSIS: Running A/E calculations or dimensional sweeps. Routes to Lead Actuary.\n"
+            "- VISUALIZE: Generating charts, treemaps, or visual reports. Routes to Analyst Agent.\n"
+            "- CONTINUE: The user is answering a direct question, confirming an action (e.g., 'proceed', 'yes', 'option 1'), or providing a short reply to the previous output.\n\n"
+            "Return JSON only, e.g., {\"intent\":\"CONTINUE\"}."
         )
         try:
             completion = self.client.chat.completions.create(
@@ -129,11 +145,11 @@ class StudyOrchestrator:
         try:
             parsed = json.loads(content)
             intent = parsed.get("intent", "").strip().upper()
-            if intent in {"GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE"}:
+            if intent in {"GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"}:
                 return intent  # type: ignore[return-value]
         except json.JSONDecodeError:
             # If model returned non-JSON text, recover by keyword extraction.
-            for label in ("GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE"):
+            for label in ("GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"):
                 if re.search(rf"\b{label}\b", content.upper()):
                     return label  # type: ignore[return-value]
 
@@ -141,6 +157,7 @@ class StudyOrchestrator:
 
     def process_query(self, user_query: str) -> str:
         """Route a query to the appropriate specialized agent(s)."""
+        global _LAST_ACTIVE_AGENT
         intent = self._classify_intent(user_query)
 
         if intent == "GENERAL":
@@ -172,14 +189,33 @@ class StudyOrchestrator:
             )
 
         if intent == "DATA_PREP":
+            _LAST_ACTIVE_AGENT = "STEWARD"
             return self.data_steward.run(user_query)
 
         if intent == "ANALYSIS":
+            _LAST_ACTIVE_AGENT = "ACTUARY"
             return self.actuary.run(user_query)
 
         if intent == "VISUALIZE":
+            _LAST_ACTIVE_AGENT = "ANALYST"
             return self.analyst_agent.run(user_query)
-        return self._heuristic_classify(user_query)
+
+        if intent == "CONTINUE":
+            if _LAST_ACTIVE_AGENT == "STEWARD":
+                return self.data_steward.run(user_query)
+            if _LAST_ACTIVE_AGENT == "ACTUARY":
+                return self.actuary.run(user_query)
+            if _LAST_ACTIVE_AGENT == "ANALYST":
+                return self.analyst_agent.run(user_query)
+            return (
+                "I can route this request to Data Steward, Lead Actuary, or Analyst. "
+                "Please specify whether you want data prep, analysis, or visualization."
+            )
+
+        return (
+            "I can route this request to Data Steward, Lead Actuary, or Analyst. "
+            "Please specify whether you want data prep, analysis, or visualization."
+        )
 
 
 if __name__ == "__main__":
