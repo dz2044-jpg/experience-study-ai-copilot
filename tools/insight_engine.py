@@ -155,7 +155,7 @@ def run_dimensional_sweep(
     depth: int = 1,
     filters: Optional[List[str]] = None,
     selected_columns: Optional[List[str]] = None,
-    min_mac: int = 1,
+    min_mac: int = 0,
     top_n: int = 20,
     sort_by: str = "AE_Ratio_Amount",
     data_path: str = "data/output/analysis_inforce.csv",
@@ -284,7 +284,7 @@ def run_dimensional_sweep(
     top_results = result_df.head(top_n)
 
     # Persist sweep summary for downstream visualization tools.
-    summary_df = top_results.copy()
+    summary_df = result_df.copy()
     summary_df["AE_Count_CI_Lower"] = summary_df["AE_Count_CI"].apply(lambda x: x[0] if x else None)
     summary_df["AE_Count_CI_Upper"] = summary_df["AE_Count_CI"].apply(lambda x: x[1] if x else None)
     summary_df["AE_Amount_CI_Lower"] = summary_df["AE_Amount_CI"].apply(lambda x: x[0] if x else None)

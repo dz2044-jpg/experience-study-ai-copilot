@@ -99,7 +99,7 @@ class DimensionalSweepSchema(BaseModel):
         ),
     )
     min_mac: int = Field(
-        default=1,
+        default=0,
         ge=0,
         description=(
             "Visibility floor: only include cohorts with Sum_MAC >= min_mac. "

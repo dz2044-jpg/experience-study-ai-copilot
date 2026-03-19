@@ -84,6 +84,7 @@ def test_actuary_agent_runs_explicit_sweep_without_mapping_confirmation(tmp_path
 
     assert "confirm which columns" not in response.lower()
     assert captured["depth"] == 1
+    assert captured["min_mac"] == 0
     assert captured["selected_columns"] == ["Gender", "Smoker", "Issue_Age_band"]
     assert agent.latest_output_path == "data/output/sweep_summary_1_gender_smoker_issue_age_band.csv"
 

@@ -15,3 +15,5 @@ wheels/
 
 # Generated outputs
 data/output/
+docs/streamlit output scripts/
+

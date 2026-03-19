@@ -212,7 +212,7 @@ class ActuaryAgent:
         at_least_match = re.search(r"at least\s+(\d+)\s+deaths?", msg)
         if at_least_match:
             return int(at_least_match.group(1))
-        return 1
+        return 0
 
     @staticmethod
     def _extract_sort_by(user_message: str) -> str:
@@ -380,7 +380,7 @@ class ActuaryAgent:
             sweep = run_dimensional_sweep(
                 depth=1,
                 selected_columns=["Face_Amount"],
-                min_mac=1,
+                min_mac=0,
                 top_n=1,
                 sort_by="AE_Ratio_Amount",
             )
@@ -393,7 +393,7 @@ class ActuaryAgent:
         if "1-way" in msg or "most adverse cohort" in msg or "rank cohorts by ae_ratio_amount" in msg:
             sweep = run_dimensional_sweep(
                 depth=1,
-                min_mac=1,
+                min_mac=0,
                 top_n=5,
                 sort_by="AE_Ratio_Amount",
             )
@@ -404,7 +404,7 @@ class ActuaryAgent:
             )
 
         if "2-way" in msg or "min_mac=2" in msg or "intersections" in msg:
-            min_mac = 2
+            min_mac = 0
             min_match = re.search(r"min_mac\s*=\s*(\d+)", msg)
             if min_match:
                 min_mac = int(min_match.group(1))
