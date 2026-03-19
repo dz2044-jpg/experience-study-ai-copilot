@@ -192,8 +192,8 @@ def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", me
     if color_col not in df.columns:
         raise ValueError(f"Missing required A/E column '{color_col}' in {data_path}")
 
-    labels = df[cohort_col].astype(str)
-    parents = ["Overall"] * len(df)
+    labels = df[cohort_col].astype(str).str.replace(r"\s+\|\s+", "<br>", regex=True)
+    parents = [""] * len(df)
     values = df[value_col].astype(float)
     colors = df[color_col].astype(float)
 
@@ -202,6 +202,9 @@ def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", me
             labels=labels,
             parents=parents,
             values=values,
+            texttemplate="%{label}<br>A/E: %{customdata:.1%}",
+            textposition="middle center",
+            pathbar=dict(visible=False),
             marker=dict(
                 colors=colors,
                 colorscale="RdYlGn_r",
@@ -218,6 +221,7 @@ def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", me
 
     fig.update_layout(
         height=800,
+        uniformtext=dict(minsize=10, mode="hide"),
         title_text=(
             "Risk Treemap (A/E by Amount)" if metric == "amount" else "Risk Treemap (A/E by Count)"
         ),
@@ -228,4 +232,3 @@ def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", me
     fig.write_html(out_path)
 
     return f"Treemap report generated: {out_path}"
-
