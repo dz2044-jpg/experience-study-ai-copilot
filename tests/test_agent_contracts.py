@@ -223,7 +223,7 @@ def test_analyst_agent_filters_treemap_to_requested_pair(tmp_path, monkeypatch):
         captured["data_path"] = data_path
         captured["metric"] = metric
         captured["dimensions"] = pd.read_csv(data_path)["Dimensions"].tolist()
-        return f"Treemap report generated and opened: {data_path}"
+        return f"Treemap report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(agent_analyst_module, "generate_treemap_report", fake_generate_treemap_report)
@@ -234,7 +234,7 @@ def test_analyst_agent_filters_treemap_to_requested_pair(tmp_path, monkeypatch):
         data_path=str(sweep_path),
     )
 
-    assert response.startswith("Treemap report generated and opened:")
+    assert response.startswith("Treemap report generated:")
     assert captured["metric"] == "amount"
     assert captured["dimensions"] == ["Smoker=Yes | Risk_Class=Preferred Plus"]
 

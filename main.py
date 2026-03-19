@@ -1,11 +1,45 @@
 """Minimal Streamlit entry point for the Experience Study AI Copilot."""
 
+import re
+from pathlib import Path
+from typing import Optional
+
 from agents.orchestrator import StudyOrchestrator
 
 try:
     import streamlit as st
 except ImportError:  # pragma: no cover - depends on environment
     st = None  # type: ignore[assignment]
+
+
+VISUALIZATION_PATH_RE = re.compile(r"(?P<path>/\S+\.html)")
+
+
+def _extract_visualization_path(response: str) -> Optional[str]:
+    """Extract an absolute HTML artifact path from an assistant response."""
+    match = VISUALIZATION_PATH_RE.search(response)
+    if not match:
+        return None
+    return match.group("path")
+
+
+def _render_assistant_response(response: str, visualization_path: Optional[str] = None) -> None:
+    """Render assistant text and, when available, embed the generated HTML chart."""
+    if st is None:
+        raise RuntimeError("Streamlit is required to run the web app. Install project dependencies first.")
+
+    st.markdown(response)
+
+    resolved_path = visualization_path or _extract_visualization_path(response)
+    if not resolved_path:
+        return
+
+    html_path = Path(resolved_path)
+    if not html_path.exists():
+        return
+
+    with st.expander("View visualization"):
+        st.components.v1.html(html_path.read_text(encoding="utf-8"), height=850, scrolling=True)
 
 
 def render_app() -> None:
@@ -26,7 +60,7 @@ def render_app() -> None:
         with st.chat_message("user"):
             st.markdown(item["prompt"])
         with st.chat_message("assistant"):
-            st.markdown(item["response"])
+            _render_assistant_response(item["response"], item.get("visualization_path"))
 
     prompt = st.chat_input("Ask the copilot to profile data, run a sweep, or generate a chart.")
     if prompt and prompt.strip():
@@ -36,8 +70,15 @@ def render_app() -> None:
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 response = st.session_state["orchestrator"].process_query(cleaned_prompt)
-            st.markdown(response)
-        st.session_state["history"].append({"prompt": cleaned_prompt, "response": response})
+            visualization_path = _extract_visualization_path(response)
+            _render_assistant_response(response, visualization_path)
+        st.session_state["history"].append(
+            {
+                "prompt": cleaned_prompt,
+                "response": response,
+                "visualization_path": visualization_path,
+            }
+        )
 
 
 def main() -> None:

@@ -30,7 +30,7 @@ view (scatter plot with data table) or a hierarchical risk view (treemap heatmap
 then call the appropriate visualization tool.
 
 Be concise and professional. After running a tool, just confirm which chart was
-generated, which metric was used, and that it opened in the user's browser.
+generated, which metric was used, and that it is available in the app.
 """.strip()
 
 

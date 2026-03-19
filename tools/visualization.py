@@ -1,7 +1,6 @@
-"""Standalone plotting engine for A/E univariate reports using Plotly."""
+"""Standalone plotting engine for A/E reports using Plotly."""
 
 import os
-import webbrowser
 from typing import List
 
 import pandas as pd
@@ -18,7 +17,7 @@ def _get_ci_columns(metric: str) -> tuple[str, str]:
 
 def generate_univariate_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
     """
-    Generate an interactive HTML univariate A/E report and open it in the browser.
+    Generate an interactive HTML univariate A/E report.
 
     Parameters
     ----------
@@ -144,18 +143,17 @@ def generate_univariate_report(data_path: str = "data/output/sweep_summary.csv",
         title_text="Univariate A/E Report" if metric == "amount" else "Univariate A/E Report (Count)",
     )
 
-    # Output HTML and open in browser
+    # Persist the HTML so Streamlit can render it inline.
     out_path = os.path.abspath("data/output/temp_univariate_report.html")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     fig.write_html(out_path)
-    webbrowser.open("file://" + out_path)
 
-    return f"Univariate report generated and opened: {out_path}"
+    return f"Univariate report generated: {out_path}"
 
 
 def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
     """
-    Generate a treemap A/E report and open it in the browser.
+    Generate a treemap A/E report.
 
     Parameters
     ----------
@@ -228,8 +226,6 @@ def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", me
     out_path = os.path.abspath("data/output/temp_treemap_report.html")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     fig.write_html(out_path)
-    webbrowser.open("file://" + out_path)
 
-    return f"Treemap report generated and opened: {out_path}"
-
+    return f"Treemap report generated: {out_path}"
 

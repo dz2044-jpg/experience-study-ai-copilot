@@ -149,6 +149,13 @@ experience-study-ai-copilot/
 uv sync
 ```
 
+This repo is pinned to Python 3.13 via [`.python-version`](/Users/amberwang/Desktop/dzw/experience-study-ai-copilot/.python-version). If your local interpreter is older, run:
+
+```bash
+uv python pin 3.13
+uv sync
+```
+
 ### Configure OpenAI Access
 
 Agents use the OpenAI Python SDK when `OPENAI_API_KEY` is available. Create a `.env` file with:
