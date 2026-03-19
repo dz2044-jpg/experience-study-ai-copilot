@@ -13,6 +13,7 @@ The goal is to validate four things:
 - conversation state is handled correctly
 - actuarial math comes from deterministic Python tools rather than LLM invention
 - pipeline handoffs create the expected disk artifacts
+- treemap recovery for missing pairs preserves the Actuary as the owner of official sweep state
 
 ## Test Setup
 
@@ -112,6 +113,29 @@ Notes:
   The Orchestrator routes into the Analyst step and attempts to generate a visualization from the latest `data/output/sweep_summary.csv`.
   A report file should be created even if browser auto-open fails in the environment.
 
+### Test 6A: The Missing-Pair Treemap Confirmation Check
+
+- Action:
+  First run:
+  `Run 2-way dimensional sweeps for all pairs between Smoker, Risk_Class, and Issue_Age_band, then rank the results by AE_Ratio_Amount.`
+  After that completes, prompt the Copilot:
+  `Generate a treemap of the 2-way sweep on Gender and Smoker.`
+- Expected Pass:
+  The system must not let the Analyst silently rerun sweep math.
+  Instead, it should explain that the current sweep artifact does not contain `Gender + Smoker` and ask the user to reply `continue` to run an official 2-way sweep first, then generate the treemap.
+  The response should make it clear that the follow-up sweep will be official rather than visualization-only.
+
+### Test 6B: The Confirmed Official Sweep-to-Treemap Check
+
+- Action:
+  After Test 6A prompts for confirmation, type:
+  `continue`
+- Expected Pass:
+  The Orchestrator should run an official 2-way sweep on `Gender` and `Smoker` through the Actuary, update `data/output/sweep_summary.csv` to that new official sweep, and then generate the treemap from that official artifact.
+  Inspect `data/output/sweep_summary.csv` and confirm its `Dimensions` rows now correspond to `Gender` + `Smoker` combinations.
+  `data/output/temp_treemap_report.html` must be created.
+  This entire sequence should happen from a single confirmation, without requiring a second `continue`.
+
 ## Phase 3: Actuarial Math & Verification
 
 ### Test 7: The Actuarial Dictionary Check
@@ -173,6 +197,16 @@ Notes:
   `data/output/temp_treemap_report.html`
   If browser auto-open is blocked by the environment, file creation still counts as the required artifact-level success.
 
+### Test 13: The Role-Boundary Preservation Check
+
+- Action:
+  Complete Tests 6A and 6B, then inspect the latest sweep artifact on disk:
+  `data/output/sweep_summary.csv`
+- Expected Pass:
+  The latest sweep artifact must reflect the official `Gender` + `Smoker` sweep that was triggered by confirmation.
+  There should be no requirement for a hidden Analyst-only temp sweep source to explain the treemap contents.
+  Follow-up actuarial prompts should therefore be referring to an official sweep that actually exists on disk for the current session.
+
 ## Known Caveats to Record During UAT
 
 Document these explicitly if they appear:
@@ -181,6 +215,8 @@ Document these explicitly if they appear:
 - the browser-open step fails even though the HTML file is generated
 - the agent responds with a generic help message instead of using the pending continuation state
 - a later tool call overwrites `analysis_inforce.csv` incorrectly and drops previously engineered columns
+- the Analyst appears to have generated a treemap from a private sweep that never updated the official sweep artifact
+- the missing-pair treemap confirmation requires more than one `continue` after the user already approved the official rerun
 
 ## Recommended UAT Run Order
 
@@ -194,9 +230,12 @@ Use this order when testing the repo manually:
 6. Test 7
 7. Test 8
 8. Test 9
-9. Test 12
-10. Test 10
-11. Test 11
+9. Test 6A
+10. Test 6B
+11. Test 12
+12. Test 13
+13. Test 10
+14. Test 11
 
 ## Exit Criteria
 
@@ -207,4 +246,5 @@ The build is ready for broader review only if all of the following are true:
 - continuation prompts reliably advance the queued workflow step
 - actuarial sweeps update `data/output/sweep_summary.csv`
 - analyst visualizations are generated from the latest sweep artifact
+- missing-pair treemap recovery requires user confirmation and updates the official sweep artifact before visualization
 - invalid inputs fail gracefully without crashing the CLI
