@@ -100,6 +100,52 @@ class ActuaryAgent:
             return "N/A"
         return f"[{ci[0]:.2f}, {ci[1]:.2f}]"
 
+    @staticmethod
+    def _format_numeric(value: Any, decimals: int = 2) -> str:
+        """Format numeric values for markdown output."""
+        if value is None:
+            return "N/A"
+        return f"{float(value):.{decimals}f}"
+
+    @staticmethod
+    def _format_int(value: Any) -> str:
+        """Format integer-like values for markdown output."""
+        if value is None:
+            return "N/A"
+        return str(int(value))
+
+    @staticmethod
+    def _escape_markdown_cell(value: Any) -> str:
+        """Escape pipes so cohort labels render correctly inside markdown tables."""
+        return str(value).replace("|", "\\|")
+
+    def _build_ranked_cohort_table(self, rows: list[dict[str, Any]]) -> str:
+        """Render the top-ranked cohorts as a markdown table."""
+        table_rows = rows[:10]
+        header = [
+            "| Rank | Cohort | AE_Ratio_Amount | AE_Ratio_Count | Sum_MAC |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+
+        for idx, row in enumerate(table_rows, start=1):
+            header.append(
+                "| "
+                f"{idx} | "
+                f"{self._escape_markdown_cell(row.get('Dimensions', 'N/A'))} | "
+                f"{self._format_numeric(row.get('AE_Ratio_Amount'))} | "
+                f"{self._format_numeric(row.get('AE_Ratio_Count'))} | "
+                f"{self._format_int(row.get('Sum_MAC'))} |"
+            )
+
+        return "\n".join(header)
+
+    @staticmethod
+    def _top_cohort_label(sort_by: str) -> str:
+        """Return metric-aware wording for the detailed summary block."""
+        if sort_by == "AE_Ratio_Amount":
+            return "Worst cohort"
+        return f"Top-ranked cohort by {sort_by}"
+
     def _reset_sweep_artifacts(self) -> None:
         """Clear any previously recorded sweep output paths before a new run."""
         self.latest_output_path = None
@@ -283,9 +329,9 @@ class ActuaryAgent:
             f"{depth}-way dimensional sweep complete on the prepared analysis dataset "
             f"using {selected_label}, ranked by {sort_by}."
         )
-        return self._summarize_sweep(sweep, context)
+        return self._summarize_sweep(sweep, context, sort_by)
 
-    def _summarize_sweep(self, result_json: str, context: str) -> str:
+    def _summarize_sweep(self, result_json: str, context: str, sort_by: str = "AE_Ratio_Amount") -> str:
         self._record_sweep_artifacts(result_json)
         payload = json.loads(result_json)
         if "error" in payload:
@@ -295,6 +341,8 @@ class ActuaryAgent:
             return "No cohorts met the requested visibility threshold."
 
         top = rows[0]
+        ranked_table = self._build_ranked_cohort_table(rows)
+        top_label = self._top_cohort_label(sort_by)
         count_ci = top.get("AE_Count_CI", [None, None])
         amount_ci = top.get("AE_Amount_CI", [None, None])
 
@@ -312,7 +360,10 @@ class ActuaryAgent:
 
         return (
             f"{context}\n"
-            f"- Top cohort: `{top['Dimensions']}`\n"
+            f"\nTop 10 ranked cohorts\n"
+            f"{ranked_table}\n"
+            f"\n"
+            f"- {top_label}: `{top['Dimensions']}`\n"
             f"- Financial risk (AE_Ratio_Amount): {top['AE_Ratio_Amount']:.2f}\n"
             f"- Selection/mortality risk (AE_Ratio_Count): {top['AE_Ratio_Count']:.2f}\n"
             f"- Count 95% CI: {self._format_ci(count_ci)}\n"
@@ -336,6 +387,7 @@ class ActuaryAgent:
             return self._summarize_sweep(
                 sweep,
                 "High-level 1-way sweep complete (Face Amount focus).",
+                "AE_Ratio_Amount",
             )
 
         if "1-way" in msg or "most adverse cohort" in msg or "rank cohorts by ae_ratio_amount" in msg:
@@ -348,6 +400,7 @@ class ActuaryAgent:
             return self._summarize_sweep(
                 sweep,
                 "High-level 1-way sweep complete on the prepared analysis dataset.",
+                "AE_Ratio_Amount",
             )
 
         if "2-way" in msg or "min_mac=2" in msg or "intersections" in msg:
@@ -364,6 +417,7 @@ class ActuaryAgent:
             return self._summarize_sweep(
                 sweep,
                 f"2-way dimensional sweep complete with min_mac={min_mac}.",
+                "AE_Ratio_Amount",
             )
 
         return (
