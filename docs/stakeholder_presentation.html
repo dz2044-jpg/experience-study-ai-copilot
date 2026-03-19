@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Experience Study AI Copilot | Stakeholder Presentation</title>
+  <style>
+    :root {
+      --bg: #f5efe4;
+      --panel: rgba(255, 251, 243, 0.82);
+      --panel-strong: rgba(255, 248, 236, 0.95);
+      --ink: #182431;
+      --muted: #4c5b67;
+      --line: rgba(24, 36, 49, 0.14);
+      --teal: #146b75;
+      --teal-soft: #d8eff1;
+      --sand: #f0d7ad;
+      --amber: #b86b2d;
+      --coral: #cf5f4a;
+      --blue: #286d9d;
+      --green: #2f7a4c;
+      --shadow: 0 24px 70px rgba(24, 36, 49, 0.14);
+      --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      --body: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(20, 107, 117, 0.16), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(184, 107, 45, 0.16), transparent 28%),
+        linear-gradient(160deg, #f6f0e6 0%, #f3eadb 48%, #efe5d4 100%);
+      color: var(--ink);
+      font-family: var(--body);
+    }
+
+    body {
+      padding: 24px;
+    }
+
+    .deck-shell {
+      position: relative;
+      max-width: 1360px;
+      min-height: calc(100vh - 48px);
+      margin: 0 auto;
+      padding: 28px 28px 110px;
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(255, 250, 241, 0.82)),
+        repeating-linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.24) 0,
+          rgba(255, 255, 255, 0.24) 14px,
+          rgba(255, 255, 255, 0.08) 14px,
+          rgba(255, 255, 255, 0.08) 28px
+        );
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .deck-shell::before,
+    .deck-shell::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(10px);
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    .deck-shell::before {
+      width: 220px;
+      height: 220px;
+      top: -72px;
+      right: 48px;
+      background: rgba(20, 107, 117, 0.16);
+    }
+
+    .deck-shell::after {
+      width: 180px;
+      height: 180px;
+      bottom: 70px;
+      left: -30px;
+      background: rgba(184, 107, 45, 0.16);
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 22px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      font-size: 0.78rem;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, var(--teal), var(--blue));
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-family: var(--display);
+      font-size: 1.15rem;
+      box-shadow: 0 10px 24px rgba(20, 107, 117, 0.24);
+    }
+
+    .topbar-note {
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.56);
+      backdrop-filter: blur(6px);
+      text-align: right;
+    }
+
+    .slides {
+      position: relative;
+      z-index: 2;
+    }
+
+    .slide {
+      display: none;
+      min-height: 72vh;
+      animation: reveal 360ms ease;
+    }
+
+    .slide.active {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 28px;
+      align-items: stretch;
+    }
+
+    .slide.single .slide.active,
+    .slide.active.single {
+      grid-template-columns: 1fr;
+    }
+
+    @keyframes reveal {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .left,
+    .right,
+    .full {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.65);
+      border-radius: 24px;
+      padding: 26px;
+      backdrop-filter: blur(12px);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(20, 107, 117, 0.1);
+      color: var(--teal);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 14px;
+      font-family: var(--display);
+      font-weight: 700;
+      line-height: 0.98;
+      letter-spacing: -0.02em;
+    }
+
+    h1 {
+      font-size: clamp(2.7rem, 5vw, 4.8rem);
+    }
+
+    h2 {
+      font-size: clamp(2rem, 3.7vw, 3.4rem);
+    }
+
+    h3 {
+      font-size: 1.2rem;
+      line-height: 1.15;
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.58;
+    }
+
+    ul {
+      margin: 16px 0 0;
+      padding-left: 20px;
+      color: var(--ink);
+    }
+
+    li {
+      margin: 10px 0;
+      line-height: 1.45;
+    }
+
+    .hero-grid,
+    .card-grid,
+    .artifact-grid,
+    .roadmap-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .hero-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 22px;
+    }
+
+    .card-grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .card-grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .artifact-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 14px;
+    }
+
+    .roadmap-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 18px;
+    }
+
+    .stat,
+    .card,
+    .artifact,
+    .roadmap,
+    .note,
+    .mini-panel {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+    }
+
+    .stat strong,
+    .artifact strong {
+      display: block;
+      font-size: 1.9rem;
+      font-family: var(--display);
+      margin-bottom: 6px;
+      color: var(--ink);
+    }
+
+    .label {
+      display: inline-block;
+      margin-bottom: 10px;
+      font-size: 0.76rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--amber);
+      font-weight: 700;
+    }
+
+    .accent-line {
+      width: 84px;
+      height: 5px;
+      margin: 18px 0 20px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--coral), var(--sand));
+    }
+
+    .diagram {
+      height: 100%;
+      padding: 18px;
+      border-radius: 24px;
+      background:
+        linear-gradient(180deg, rgba(20, 107, 117, 0.06), rgba(40, 109, 157, 0.03)),
+        var(--panel-strong);
+      border: 1px solid var(--line);
+    }
+
+    .diagram-title {
+      margin-bottom: 14px;
+      font-size: 0.84rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .pillar {
+      border-radius: 22px;
+      padding: 20px;
+      min-height: 260px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pillar::after {
+      content: "";
+      position: absolute;
+      inset: auto -30px -40px auto;
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: rgba(20, 107, 117, 0.08);
+    }
+
+    .pillar.muscles::after {
+      background: rgba(47, 122, 76, 0.1);
+    }
+
+    .pillar.brains::after {
+      background: rgba(40, 109, 157, 0.1);
+    }
+
+    .pillar .badge {
+      display: inline-flex;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      background: rgba(24, 36, 49, 0.08);
+    }
+
+    .flow-track {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .flow-step {
+      position: relative;
+      padding: 18px;
+      border-radius: 20px;
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      min-height: 240px;
+    }
+
+    .flow-step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      top: 50%;
+      right: -15px;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      box-shadow: 0 10px 20px rgba(24, 36, 49, 0.18);
+    }
+
+    .flow-step .step-num {
+      width: 34px;
+      height: 34px;
+      margin-bottom: 14px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(145deg, var(--amber), var(--coral));
+    }
+
+    .flow-step code,
+    .artifact code,
+    .code-sample code,
+    .topbar code,
+    .note code {
+      font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+      font-size: 0.88em;
+      background: rgba(24, 36, 49, 0.06);
+      padding: 2px 6px;
+      border-radius: 8px;
+    }
+
+    .code-sample {
+      margin-top: 14px;
+      padding: 16px;
+      border-radius: 18px;
+      background: #182431;
+      color: #f8f3ea;
+      font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+      font-size: 0.91rem;
+      line-height: 1.5;
+      overflow: auto;
+    }
+
+    .code-sample .muted {
+      color: #a1b8cb;
+    }
+
+    .trust-stack,
+    .test-grid {
+      display: grid;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .trust-stack {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .test-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .guardrail {
+      padding: 18px;
+      border-radius: 20px;
+      background: var(--panel-strong);
+      border-left: 5px solid var(--teal);
+      border-top: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .progress-wrap {
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      bottom: 78px;
+      z-index: 2;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+    }
+
+    .progress-bar {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(24, 36, 49, 0.08);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--teal), var(--blue), var(--amber));
+      transition: width 220ms ease;
+    }
+
+    .controls {
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      bottom: 24px;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .controls-left,
+    .controls-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 16px;
+      background: var(--ink);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(24, 36, 49, 0.18);
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+
+    button.secondary {
+      background: rgba(24, 36, 49, 0.08);
+      color: var(--ink);
+      box-shadow: none;
+      border: 1px solid var(--line);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.35;
+      cursor: default;
+      transform: none;
+    }
+
+    .slide-jump {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      padding: 0;
+      border-radius: 50%;
+      background: rgba(24, 36, 49, 0.16);
+      box-shadow: none;
+    }
+
+    .dot.active {
+      background: var(--teal);
+      transform: scale(1.12);
+    }
+
+    .small {
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .footer-note {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1120px) {
+      .slide.active,
+      .slide.active.single,
+      .slide.single .slide.active {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-grid,
+      .card-grid.three,
+      .artifact-grid,
+      .test-grid,
+      .roadmap-grid,
+      .flow-track {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .flow-step:not(:last-child)::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 12px;
+      }
+
+      .deck-shell {
+        min-height: calc(100vh - 24px);
+        padding: 18px 18px 118px;
+        border-radius: 22px;
+      }
+
+      .topbar,
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .topbar-note {
+        text-align: left;
+      }
+
+      .hero-grid,
+      .card-grid.two,
+      .card-grid.three,
+      .artifact-grid,
+      .trust-stack,
+      .test-grid,
+      .roadmap-grid,
+      .flow-track,
+      .pillars {
+        grid-template-columns: 1fr;
+      }
+
+      .slide {
+        min-height: auto;
+      }
+
+      .progress-wrap {
+        bottom: 88px;
+      }
+
+      .controls-left,
+      .controls-right,
+      .slide-jump {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark">ES</div>
+        <div>Experience Study AI Copilot</div>
+      </div>
+      <div class="topbar-note">
+        Open this file directly in a browser. Use <code>←</code> <code>→</code>, space, or the buttons below.
+      </div>
+    </div>
+
+    <main class="slides" id="slides">
+      <section class="slide active" data-title="Problem & Audience">
+        <div class="left">
+          <div class="kicker">Slide 1</div>
+          <h1>Documentation is now part of the product.</h1>
+          <div class="accent-line"></div>
+          <p>
+            Experience-study systems have two jobs: get the actuarial math right and make the operating model understandable to the people who have to trust it.
+          </p>
+          <p>
+            This repo sits at that intersection. It gives developers and actuaries a deterministic analysis engine, while giving broader stakeholders a visible, reviewable multi-agent workflow.
+          </p>
+          <div class="hero-grid">
+            <div class="stat">
+              <span class="label">Primary Users</span>
+              <strong>Actuaries</strong>
+              Validate rules, review A/E outputs, and inspect cohort behavior.
+            </div>
+            <div class="stat">
+              <span class="label">Technical Users</span>
+              <strong>Data Scientists</strong>
+              Audit the workflow, engineer features, and evaluate system boundaries.
+            </div>
+            <div class="stat">
+              <span class="label">Review Audience</span>
+              <strong>Stakeholders</strong>
+              Understand why this is safe, useful, and operationally credible.
+            </div>
+          </div>
+        </div>
+        <div class="right">
+          <div class="diagram">
+            <div class="diagram-title">The communication challenge</div>
+            <div class="card-grid two">
+              <div class="card">
+                <h3>Without documentation</h3>
+                <p>People see “AI agents” and assume the model is doing the math.</p>
+              </div>
+              <div class="card">
+                <h3>With clear documentation</h3>
+                <p>People can trace where deterministic tooling ends and conversational orchestration begins.</p>
+              </div>
+            </div>
+            <div class="note" style="margin-top: 14px;">
+              <span class="label">Repo reality</span>
+              <p>The current codebase already separates deterministic tools, specialist agents, and orchestrated handoffs. The documentation refresh makes that visible.</p>
+            </div>
+            <div class="code-sample">
+<span class="muted">Key modules</span>
+agents/orchestrator.py
+agents/agent_steward.py
+agents/agent_actuary.py
+agents/agent_analyst.py
+tools/data_steward.py
+tools/insight_engine.py
+tools/visualization.py
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Why Multi-Agent">
+        <div class="left">
+          <div class="kicker">Slide 2</div>
+          <h2>Why experience-study work benefits from a multi-agent copilot</h2>
+          <p>
+            The workflow is naturally segmented. Data prep, actuarial analysis, and visualization each have different rules, different failure modes, and different acceptable outputs.
+          </p>
+          <ul>
+            <li>A single general assistant tends to blur responsibility boundaries.</li>
+            <li>Specialist agents can be instructed narrowly and backed by explicit tool schemas.</li>
+            <li>The orchestrator can preserve user control by pausing between major stages.</li>
+          </ul>
+        </div>
+        <div class="right">
+          <div class="card-grid two">
+            <div class="card">
+              <span class="label">Data Steward</span>
+              <h3>Input trust</h3>
+              <p>Profiles datasets, validates actuarial rules, engineers features, and writes the analysis-ready dataset.</p>
+            </div>
+            <div class="card">
+              <span class="label">Lead Actuary</span>
+              <h3>Math trust</h3>
+              <p>Runs deterministic dimensional sweeps and interprets A/E count and amount outputs cautiously.</p>
+            </div>
+            <div class="card">
+              <span class="label">Data Analyst</span>
+              <h3>Communication trust</h3>
+              <p>Generates chart artifacts from aggregated sweep outputs rather than from raw source data.</p>
+            </div>
+            <div class="card">
+              <span class="label">Orchestrator</span>
+              <h3>Workflow trust</h3>
+              <p>Routes intent and continuation prompts without silently chaining through the entire pipeline.</p>
+            </div>
+          </div>
+          <div class="note" style="margin-top: 14px;">
+            <span class="label">Test-backed behavior</span>
+            <p>The repo’s tests explicitly cover continuation routing, artifact creation, missing-feature guidance, and visualization dependency on fresh sweep outputs.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Muscles & Brains">
+        <div class="full">
+          <div class="kicker">Slide 3</div>
+          <h2>“Muscles and Brains” is the architecture, not just the tagline.</h2>
+          <p>
+            The point is to keep the system conversational without letting the model become the source of numerical truth.
+          </p>
+          <div class="pillars">
+            <div class="pillar muscles">
+              <div class="badge">Muscles: deterministic tools</div>
+              <h3 style="margin-top: 16px;">Repeatable computation and artifact generation</h3>
+              <ul>
+                <li><code>tools/data_steward.py</code> handles profiling, validation, and feature engineering.</li>
+                <li><code>tools/insight_engine.py</code> performs A/E sweeps and Bayesian interval math.</li>
+                <li><code>tools/visualization.py</code> writes standalone HTML reports.</li>
+                <li>Outputs land on disk as explicit handoff artifacts.</li>
+              </ul>
+            </div>
+            <div class="pillar brains">
+              <div class="badge">Brains: agents + orchestrator</div>
+              <h3 style="margin-top: 16px;">Routing, tool selection, and explanation</h3>
+              <ul>
+                <li>Schema-bound tool calling is defined in <code>agents/schemas.py</code>.</li>
+                <li>Agents explain results, enforce role boundaries, and refuse inappropriate cross-role work.</li>
+                <li>The orchestrator classifies <code>DATA_PREP</code>, <code>ANALYSIS</code>, <code>VISUALIZE</code>, and <code>CONTINUE</code>.</li>
+                <li>The LLM remains a coordinator, not an actuarial calculator.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-grid three" style="margin-top: 18px;">
+            <div class="card">
+              <span class="label">What changes with AI</span>
+              <p>Interface flexibility, step selection, and user-facing explanations.</p>
+            </div>
+            <div class="card">
+              <span class="label">What does not change</span>
+              <p>Validation rules, formulas, aggregation logic, and artifact formats.</p>
+            </div>
+            <div class="card">
+              <span class="label">Why it matters</span>
+              <p>Trust improves when the model can be useful without being authoritative about the math.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Workflow Handoff">
+        <div class="full">
+          <div class="kicker">Slide 4</div>
+          <h2>The workflow is staged, artifact-driven, and continuation-aware.</h2>
+          <div class="flow-track">
+            <div class="flow-step">
+              <div class="step-num">1</div>
+              <span class="label">Orchestrator</span>
+              <h3>Classify intent</h3>
+              <p>Routes requests into general help, data prep, analysis, visualization, or continuation.</p>
+              <p class="small">Key idea: do the first logical step, not the whole chain.</p>
+            </div>
+            <div class="flow-step">
+              <div class="step-num">2</div>
+              <span class="label">Data Steward</span>
+              <h3>Prepare the analysis dataset</h3>
+              <p>Profiles, validates, and engineers features into <code>data/output/analysis_inforce.csv</code>.</p>
+              <p class="small">Input files remain immutable.</p>
+            </div>
+            <div class="flow-step">
+              <div class="step-num">3</div>
+              <span class="label">Lead Actuary</span>
+              <h3>Run the deterministic sweep</h3>
+              <p>Ranks cohorts and writes a run-specific CSV plus the latest alias <code>sweep_summary.csv</code>.</p>
+              <p class="small">The agent interprets; the tool computes.</p>
+            </div>
+            <div class="flow-step">
+              <div class="step-num">4</div>
+              <span class="label">Data Analyst</span>
+              <h3>Generate the browser report</h3>
+              <p>Creates scatter or treemap HTML from the latest sweep artifact.</p>
+              <p class="small">No fresh artifact, no fake success.</p>
+            </div>
+          </div>
+          <div class="note" style="margin-top: 18px;">
+            <span class="label">Continuation behavior</span>
+            <p>
+              After data prep, <code>continue</code> queues the actuarial step. After analysis, <code>continue</code> queues visualization. This keeps the user in control while still preserving momentum.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Trust Guardrails">
+        <div class="left">
+          <div class="kicker">Slide 5</div>
+          <h2>Deterministic math is the trust boundary.</h2>
+          <p>
+            The repo’s actuarial credibility comes from where calculations live and from the rules that prevent the LLM from crossing that line.
+          </p>
+          <div class="trust-stack">
+            <div class="guardrail">
+              <span class="label">MOC integrity</span>
+              <p><code>0 &lt; MOC &lt;= 1.0</code>, and if <code>MAC == 1</code>, then <code>MOC == 1.0</code>.</p>
+            </div>
+            <div class="guardrail">
+              <span class="label">Jeffreys prior</span>
+              <p>Credibility intervals use a Beta posterior with <code>Beta(0.5, 0.5)</code> prior parameters.</p>
+            </div>
+            <div class="guardrail">
+              <span class="label">Amount fallback</span>
+              <p>Zero-claim cohorts fall back from <code>MAF / MAC</code> to <code>MEF / MEC</code> to keep amount bounds usable.</p>
+            </div>
+            <div class="guardrail">
+              <span class="label">No LLM arithmetic</span>
+              <p>Agents are instructed to read tool outputs from disk and explain them, not derive them.</p>
+            </div>
+          </div>
+        </div>
+        <div class="right">
+          <div class="diagram">
+            <div class="diagram-title">Small sample of the deterministic contract</div>
+            <div class="code-sample">{
+  "Dimensions": "Gender=F | Smoker=Yes",
+  "Sum_MAC": 9,
+  "Sum_MOC": 71.45,
+  "Sum_MEC": 3.75,
+  "AE_Ratio_Count": 2.4,
+  "AE_Ratio_Amount": 1.8,
+  "AE_Count_CI_Lower": 1.1,
+  "AE_Count_CI_Upper": 3.6,
+  "AE_Amount_CI_Lower": 0.9,
+  "AE_Amount_CI_Upper": 2.7
+}</div>
+            <div class="mini-panel" style="margin-top: 14px;">
+              <span class="label">Interpretation model</span>
+              <p>The human-readable narrative can vary. The quantitative payload cannot.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Artifact Flow">
+        <div class="left">
+          <div class="kicker">Slide 6</div>
+          <h2>Artifacts make the workflow inspectable.</h2>
+          <p>
+            Each stage leaves behind a file that the next stage consumes. That makes the pipeline debuggable, reviewable, and easy to explain.
+          </p>
+          <div class="artifact-grid">
+            <div class="artifact">
+              <span class="label">Prepared dataset</span>
+              <strong>analysis_inforce.csv</strong>
+              Steward output used as the source of truth for dimensional sweeps.
+            </div>
+            <div class="artifact">
+              <span class="label">Latest sweep</span>
+              <strong>sweep_summary.csv</strong>
+              Ranked cohort output with flattened CI columns for downstream charts.
+            </div>
+            <div class="artifact">
+              <span class="label">Browser output</span>
+              <strong>HTML reports</strong>
+              Standalone visualization files created from the latest aggregated artifact.
+            </div>
+          </div>
+        </div>
+        <div class="right">
+          <div class="diagram">
+            <div class="diagram-title">Representative files in <code>data/output/</code></div>
+            <div class="code-sample">analysis_inforce.csv
+sweep_summary.csv
+sweep_summary_1_gender_smoker.csv
+temp_univariate_report.html
+temp_treemap_report.html
+temp_treemap_source_gender_smoker.csv</div>
+            <div class="mini-panel" style="margin-top: 14px;">
+              <span class="label">Operational benefit</span>
+              <p>When something fails, teams can inspect the exact handoff artifact instead of reverse-engineering agent state.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Tests & UAT">
+        <div class="full">
+          <div class="kicker">Slide 7</div>
+          <h2>Tests and UAT validate the boundaries that matter.</h2>
+          <p>
+            The current repo behavior is not just described in prose. It is reinforced by automated tests and a manual UAT checklist.
+          </p>
+          <div class="test-grid">
+            <div class="card">
+              <span class="label">Routing</span>
+              <h3>Continuation and handoffs</h3>
+              <p>Tests verify that the orchestrator routes from steward to actuary to analyst instead of collapsing everything into one opaque step.</p>
+            </div>
+            <div class="card">
+              <span class="label">Artifacts</span>
+              <h3>Deterministic files on disk</h3>
+              <p>Tests confirm that sweep runs persist ranked CSV outputs and maintain a latest alias for visualization.</p>
+            </div>
+            <div class="card">
+              <span class="label">Guardrails</span>
+              <h3>Role and data-source discipline</h3>
+              <p>Tests cover missing engineered columns, schema contracts, and the requirement for a fresh visualization input.</p>
+            </div>
+          </div>
+          <div class="card-grid two" style="margin-top: 18px;">
+            <div class="note">
+              <span class="label">Automated signal</span>
+              <p>Current baseline: <strong>23 passing tests</strong> covering orchestrator flow, insight engine behavior, and agent contracts.</p>
+            </div>
+            <div class="note">
+              <span class="label">Manual signal</span>
+              <p><code>docs/UAT_Checklist.md</code> covers schema checks, session-stacking behavior, continuation routing, artifact creation, and graceful failures.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Value & Roadmap">
+        <div class="left">
+          <div class="kicker">Slide 8</div>
+          <h2>The value proposition is simple: flexible interface, controlled math.</h2>
+          <p>
+            This system is useful because it lets teams interact conversationally with a structured actuarial workflow, without surrendering determinism or auditability.
+          </p>
+          <ul>
+            <li>Developers get a codebase with clear boundaries and inspectable artifacts.</li>
+            <li>Actuaries get deterministic A/E logic and explicit guardrails against invented math.</li>
+            <li>Stakeholders get a workflow they can understand without reading every Python file.</li>
+          </ul>
+        </div>
+        <div class="right">
+          <div class="roadmap-grid">
+            <div class="roadmap">
+              <span class="label">Now</span>
+              <h3>Canonical docs</h3>
+              <p>README becomes the technical anchor and this deck becomes the portable stakeholder narrative.</p>
+            </div>
+            <div class="roadmap">
+              <span class="label">Next</span>
+              <h3>Broader review</h3>
+              <p>Use the UAT checklist and deck to align technical reviewers and business stakeholders on the same system model.</p>
+            </div>
+            <div class="roadmap">
+              <span class="label">Later</span>
+              <h3>Production hardening</h3>
+              <p>Expand datasets, UI polish, monitoring, and operational controls without weakening the deterministic core.</p>
+            </div>
+          </div>
+          <div class="note" style="margin-top: 18px;">
+            <span class="label">Open paths</span>
+            <p class="footer-note">
+              README: <code>README.md</code><br />
+              UAT: <code>docs/UAT_Checklist.md</code><br />
+              Deck: <code>docs/stakeholder_presentation.html</code>
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="progress-wrap">
+      <div class="progress-meta">
+        <div id="slideLabel">Slide 1 of 8</div>
+        <div id="slideTitle">Problem &amp; Audience</div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="controls-left">
+        <button class="secondary" id="prevBtn" type="button">Previous</button>
+        <button id="nextBtn" type="button">Next</button>
+      </div>
+      <div class="controls-right">
+        <div class="slide-jump" id="slideDots" aria-label="Slide navigation"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const progressFill = document.getElementById("progressFill");
+      const slideLabel = document.getElementById("slideLabel");
+      const slideTitle = document.getElementById("slideTitle");
+      const prevBtn = document.getElementById("prevBtn");
+      const nextBtn = document.getElementById("nextBtn");
+      const dotsWrap = document.getElementById("slideDots");
+      let index = 0;
+
+      function buildDots() {
+        slides.forEach((slide, i) => {
+          const dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "dot";
+          dot.setAttribute("aria-label", "Go to slide " + (i + 1));
+          dot.addEventListener("click", function () {
+            goTo(i);
+          });
+          dotsWrap.appendChild(dot);
+        });
+      }
+
+      function update() {
+        slides.forEach((slide, i) => {
+          slide.classList.toggle("active", i === index);
+        });
+
+        const progress = ((index + 1) / slides.length) * 100;
+        progressFill.style.width = progress + "%";
+        slideLabel.textContent = "Slide " + (index + 1) + " of " + slides.length;
+        slideTitle.textContent = slides[index].dataset.title || "";
+        prevBtn.disabled = index === 0;
+        nextBtn.disabled = index === slides.length - 1;
+
+        Array.from(dotsWrap.children).forEach((dot, i) => {
+          dot.classList.toggle("active", i === index);
+        });
+      }
+
+      function goTo(nextIndex) {
+        if (nextIndex < 0 || nextIndex >= slides.length) {
+          return;
+        }
+        index = nextIndex;
+        update();
+      }
+
+      function next() {
+        goTo(index + 1);
+      }
+
+      function prev() {
+        goTo(index - 1);
+      }
+
+      prevBtn.addEventListener("click", prev);
+      nextBtn.addEventListener("click", next);
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "ArrowRight" || event.key === " " || event.key === "PageDown") {
+          event.preventDefault();
+          next();
+        }
+        if (event.key === "ArrowLeft" || event.key === "PageUp") {
+          event.preventDefault();
+          prev();
+        }
+        if (event.key === "Home") {
+          event.preventDefault();
+          goTo(0);
+        }
+        if (event.key === "End") {
+          event.preventDefault();
+          goTo(slides.length - 1);
+        }
+      });
+
+      slides.forEach(function (slide) {
+        slide.addEventListener("click", function (event) {
+          const tag = event.target.tagName.toLowerCase();
+          if (tag === "button" || tag === "a") {
+            return;
+          }
+          const bounds = slide.getBoundingClientRect();
+          const clickedRightHalf = event.clientX - bounds.left > bounds.width / 2;
+          if (clickedRightHalf) {
+            next();
+          } else {
+            prev();
+          }
+        });
+      });
+
+      buildDots();
+      update();
+    })();
+  </script>
+</body>
+</html>

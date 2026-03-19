@@ -1,182 +1,177 @@
-## Experience Study AI Copilot
+# Experience Study AI Copilot
 
-Experience Study AI Copilot is a multi-agent system for actuaries and data scientists analyzing life insurance inforce data.  
-It follows a **Muscles and Brains** architecture:
+Experience Study AI Copilot is a multi-agent actuarial analysis system for actuaries, data scientists, and technical stakeholders working with life insurance inforce data.
 
-- **Muscles (Deterministic Tools):** Python functions perform all validation, aggregation, actuarial math, and credibility calculations.
-- **Brains (AI Agents):** LLM agents orchestrate workflows, select tool calls, and explain results without performing raw actuarial computation.
+It is built around a strict separation of responsibilities:
 
-This design ensures reproducibility, auditability, and actuarial control over all quantitative outputs.
+- Deterministic Python tools perform validation, feature engineering, aggregation, Bayesian credibility, and A/E calculations.
+- AI agents decide which deterministic tool to call, manage workflow handoffs, and explain results in natural language.
 
----
+That split keeps the math reproducible and auditable while still giving users a flexible conversational interface.
 
-## Actuarial Methodology
+How to open the stakeholder deck:
+- Open [`docs/stakeholder_presentation.html`](docs/stakeholder_presentation.html) directly in a browser. No server, package install, or external assets are required.
 
-### Mortality Exposure Count (MOC) Logic
+## What This Repo Is For
 
-The platform supports fractional exposure and claim-state logic:
+This repository is for teams who want to:
 
-- **Active policy periods:** `MOC` can be fractional (e.g., partial-year exposure).
-- **Death periods (`MAC = 1`):** `MOC` must be exactly `1.0`.
-- Validation enforces:
-  - `0 < MOC <= 1.0`
-  - `MAC == 1  =>  MOC == 1.0`
+- profile and validate raw inforce data before analysis
+- engineer analysis-ready cohort features such as age or face-amount bands
+- run dimensional A/E sweeps with deterministic actuarial math
+- generate browser-based visual reports from the latest sweep artifact
+- demonstrate that LLMs are orchestrating work, not inventing actuarial results
 
-This allows clean integration of exposure-based mortality studies while preserving actuarial integrity for claim rows.
+The current implementation supports a thin Streamlit chat shell, a CLI copilot flow, deterministic actuarial tooling, and a supervisor that routes work across specialist agents.
 
-### Bayesian Credibility (Jeffreys Prior)
+## Why The Architecture Is Split
 
-Credible intervals are computed with a Beta posterior using **Jeffreys Prior**:
+The project follows a "Muscles and Brains" pattern.
 
-- Prior: `Beta(0.5, 0.5)`
-- Posterior parameters:
-  - `alpha = MAC + 0.5`
-  - `beta = MOC - MAC + 0.5`
-- 95% interval is derived from:
-  - `stats.beta.ppf(0.025, alpha, beta)`
-  - `stats.beta.ppf(0.975, alpha, beta)`
+### Muscles: Deterministic Tools
 
-These intervals are propagated into A/E confidence bounds for both count and amount studies.
+The `tools/` layer owns all numerical and data-manipulation work:
 
-### Hybrid A/E by Amount Logic
+- [`tools/data_steward.py`](tools/data_steward.py) profiles datasets, runs actuarial validation checks, and creates engineered analysis features
+- [`tools/insight_engine.py`](tools/insight_engine.py) runs dimensional sweeps and computes Bayesian A/E confidence intervals
+- [`tools/visualization.py`](tools/visualization.py) turns sweep outputs into interactive HTML reports
 
-For amount-based A/E, average claim severity is handled robustly:
+These functions are the source of truth for actuarial math and file artifacts.
 
-- If `MAC > 0`: `avg_claim = MAF / MAC`
-- If `MAC == 0`: `avg_claim = MEF / MEC` (expected severity fallback)
+### Brains: AI Agents
 
-This prevents degenerate zero-claim cohorts from collapsing to unusable bounds and preserves a meaningful upper credible limit.
+The `agents/` layer wraps those tools with schema-bound tool calling:
 
----
+- [`agents/agent_steward.py`](agents/agent_steward.py) handles data profiling, validation, and feature engineering
+- [`agents/agent_actuary.py`](agents/agent_actuary.py) runs and interprets dimensional sweeps
+- [`agents/agent_analyst.py`](agents/agent_analyst.py) generates visualization artifacts from sweep summaries
+- [`agents/orchestrator.py`](agents/orchestrator.py) classifies intent, routes the request, and manages continuation-based handoffs
+
+Pydantic contracts in [`agents/schemas.py`](agents/schemas.py) define the tool-call interfaces used by the agents.
+
+## End-To-End Workflow
+
+The system is designed as a staged workflow rather than an unrestricted agent chain.
+
+### 1. Data Prep
+
+The Data Steward reads a source CSV, profiles it, validates actuarial rules, and writes engineered output to:
+
+- `data/output/analysis_inforce.csv`
+
+Guardrails already enforced in code:
+
+- raw input under `data/input/` is not overwritten
+- null rows are not silently dropped or imputed
+- actuarial checks validate MAC, MEC, MOC, COLA, duplicate exposure rows, and death-exposure continuity rules
+
+### 2. Actuarial Sweep
+
+The Lead Actuary runs a deterministic dimensional sweep against:
+
+- `data/output/analysis_inforce.csv`
+
+The sweep ranks cohorts and writes CSV artifacts to `data/output/`, including:
+
+- a dynamically named sweep summary for the exact run
+- `data/output/sweep_summary.csv` as the latest alias used by downstream visualization
+
+### 3. Visualization
+
+The Analyst reads the latest sweep artifact and generates browser-openable HTML outputs such as:
+
+- `data/output/temp_univariate_report.html`
+- `data/output/temp_treemap_report.html`
+
+Visualization depends on a fresh sweep summary. If no recent analysis artifact exists, the orchestrator returns a controlled message instead of pretending the chart succeeded.
+
+### 4. Continue / Handoff Behavior
+
+The orchestrator intentionally pauses after major stages and queues the next sensible step:
+
+- after data prep, `continue` routes to actuarial analysis
+- after analysis, `continue` routes to visualization
+- continuation is session-aware and backed by tested pending-state logic
+
+This preserves user control while still enabling a guided multi-step workflow.
+
+## System Map
+
+```text
+User
+  |
+  v
+StudyOrchestrator
+  |-- DATA_PREP  --> DataStewardAgent --> tools/data_steward.py --> data/output/analysis_inforce.csv
+  |-- ANALYSIS   --> ActuaryAgent     --> tools/insight_engine.py --> data/output/sweep_summary*.csv
+  |-- VISUALIZE  --> AnalystAgent     --> tools/visualization.py --> data/output/*.html
+  |
+  `-- CONTINUE   --> pending next step based on prior artifact + session state
+```
+
+Important implementation boundaries:
+
+- the orchestrator routes; it does not perform actuarial math
+- the steward can engineer features but does not run sweeps
+- the actuary can run sweeps but does not create missing feature columns
+- the analyst visualizes aggregated sweep output rather than raw inforce data
 
 ## Project Structure
 
 ```text
 experience-study-ai-copilot/
 ├── agents/
-│   ├── schemas.py              # Pydantic contracts between tools and AI agents
-│   ├── agent_steward.py        # Data Steward agent (profiling/validation/banding)
-│   ├── agent_actuary.py        # Lead Actuary agent (A/E sweep interpretation)
-│   ├── agent_analyst.py        # Data Analyst agent (visualization & reporting)
-│   └── orchestrator.py         # Supervisor that routes GENERAL / DATA_PREP / ANALYSIS / VISUALIZE / CONTINUE
+│   ├── schemas.py
+│   ├── agent_steward.py
+│   ├── agent_actuary.py
+│   ├── agent_analyst.py
+│   └── orchestrator.py
+├── tools/
+│   ├── data_steward.py
+│   ├── insight_engine.py
+│   └── visualization.py
 ├── data/
 │   ├── input/
-│   │   └── synthetic_inforce.csv   # synthetic actuarial dataset (raw inforce)
 │   └── output/
-│       ├── analysis_inforce.csv    # engineered dataset used for actuarial sweeps
-│       └── sweep_summary.csv       # latest aggregated A/E summary used for visualization
-├── tools/
-│   ├── data_steward.py         # data validation + feature engineering
-│   ├── insight_engine.py       # actuarial sweep engine + Bayesian A/E math core
-│   └── visualization.py        # Plotly-based scatter/treemap visualization utilities
-├── chat.py                     # terminal copilot entrypoint
-├── main.py                     # thin Streamlit shell around the orchestrator
-├── pyproject.toml
-├── uv.lock
-└── README.md
+├── docs/
+│   ├── UAT_Checklist.md
+│   └── stakeholder_presentation.html
+├── chat.py
+├── main.py
+└── tests/
 ```
 
-### Tool Roles
+## Setup And Run
 
-- **`tools/data_steward.py` — Sanitizer/Engineer**
-  - Profiles raw inforce data (by default `data/input/synthetic_inforce.csv`)
-  - Runs actuarial validation checks (types, value ranges, logic checks)
-  - Creates categorical bands and regrouped features
-  - Writes transformed output to `data/output/analysis_inforce.csv` (never overwriting raw source input)
-
-- **`tools/insight_engine.py` — Actuarial Math Core**
-  - Computes Bayesian mortality-rate credible intervals
-  - Computes A/E confidence intervals (count and amount)
-  - Executes dimensional sweeps across cohort intersections using the processed dataset (`data/output/analysis_inforce.csv`)
-  - Returns structured JSON for downstream agent interpretation and UI rendering
-
-### Agent Roles
-
-- **`agents/agent_steward.py` — Data Steward Agent**
-  - Uses schema-driven tool calling for:
-    - dataset profiling
-    - actuarial data checks (including MOC integrity)
-    - categorical banding and regrouping for engineered analysis features
-  - Confirms applied transformations and output paths
-
-- **`agents/agent_actuary.py` — Lead Actuary Agent**
-  - Calls `run_dimensional_sweep` via schema-bound tools
-  - Compares `AE_Ratio_Amount` (financial risk) vs `AE_Ratio_Count` (selection risk)
-  - Uses cautious language when 95% CIs are wide or span 1.0
-
-- **`agents/agent_analyst.py` — Data Analyst Agent**
-  - Uses `VisualizationSchema` with `chart_type` and `metric` to choose tools
-  - Calls `generate_univariate_report` (scatter + table) or `generate_treemap_report`
-  - Always reads from the aggregated sweep file (`data/output/sweep_summary.csv`) rather than raw inforce data
-  - Returns concise confirmations that charts were generated and opened
-
-- **`agents/orchestrator.py` — Study Supervisor**
-  - Classifies requests into:
-    - `GENERAL`
-    - `DATA_PREP`
-    - `ANALYSIS`
-    - `VISUALIZE`
-    - `CONTINUE` (follow-on handoff)
-  - Routes to the Steward, Actuary, Analyst, or the next queued specialist step
-  - Returns a consolidated natural-language response where appropriate
-
----
-
-## Feature Highlights
-
-### Multi-Level Sweeps
-
-Supports cohort intersections at configurable depth:
-
-- **1-way:** single-dimension analysis
-- **2-way:** pairwise interactions (e.g., `Gender x Smoker`)
-- **3-way:** higher-order interaction analysis
-
-### Dynamic Sniffing
-
-Automatically identifies candidate dimension columns by:
-
-- object/string dtype, or
-- numeric columns with `<= 20` unique values
-
-Then excludes actuarial measure columns (`MAC`, `MOC`, `MEC`, `MAF`, `MEF`, etc.) from dimensioning.
-
-### Visibility Floors (Credibility Filtering)
-
-`min_mac` controls the minimum death count required for cohort visibility:
-
-- Lower values for exploratory signal detection
-- Higher values for credibility-focused, high-stability output
-
-### Dynamic Ranking and Result Control
-
-Dimensional sweep supports runtime ranking controls:
-
-- `sort_by`: rank by `AE_Ratio_Amount`, `AE_Ratio_Count`, `Sum_MAF`, etc.
-- `top_n`: control how many cohort rows are returned
-- `filters`: apply pandas query filters before aggregation
-
----
-
-## Setup
-
-### 1) Sync environment
+### Install Dependencies
 
 ```bash
 uv sync
 ```
 
-### 2) Run Streamlit app
+### Configure OpenAI Access
 
-The current repository entrypoint is `main.py`:
+Agents use the OpenAI Python SDK when `OPENAI_API_KEY` is available. Create a `.env` file with:
+
+```env
+OPENAI_API_KEY=sk-...
+```
+
+If the key is unavailable, parts of the system fall back to deterministic routing behavior where implemented.
+
+### Run The Streamlit App
 
 ```bash
 uv run streamlit run main.py
 ```
 
-### 3) Run Agent Layer (optional CLI tests)
+### Run The CLI Copilot
 
-Run each agent module directly to validate tool integration and orchestration:
+```bash
+uv run python chat.py
+```
+
+### Run Focused Agent Entry Points
 
 ```bash
 uv run python agents/agent_steward.py
@@ -184,52 +179,133 @@ uv run python agents/agent_actuary.py
 uv run python agents/orchestrator.py
 ```
 
-Or run the continuous terminal copilot:
+### Run Tests
 
 ```bash
-uv run python chat.py
+uv run pytest
 ```
 
-### 4) Configure OpenAI access
+## Output Artifacts
 
-Agents use the official OpenAI Python SDK with dotenv-based configuration.  
-Set your key once in `.env`:
+The repo uses file artifacts as explicit handoff points between stages.
 
-```env
-OPENAI_API_KEY=sk-...
-```
+### Prepared Analysis Dataset
 
----
+- `data/output/analysis_inforce.csv`
+- engineered dataset created by the steward
+- input to the actuarial sweep engine
 
-## Output Contract (Dimensional Sweep)
+### Sweep Summaries
 
-The actuarial sweep returns JSON records containing cohort definition, actual/expected values, and Bayesian confidence bounds:
+- `data/output/sweep_summary.csv`
+- `data/output/sweep_summary_<...>.csv`
+
+These files contain ranked cohort outputs with:
 
 - `Dimensions`
-- `Sum_MAC`, `Sum_MEC`
+- `Sum_MAC`, `Sum_MOC`, `Sum_MEC`
 - `Sum_MAF`, `Sum_MEF`
 - `AE_Ratio_Count`, `AE_Ratio_Amount`
-- Count CI lower/upper and Amount CI lower/upper (95%)
+- `AE_Count_CI_Lower`, `AE_Count_CI_Upper`
+- `AE_Amount_CI_Lower`, `AE_Amount_CI_Upper`
 
-Typical sweep payload shape:
+### Visualization Outputs
+
+- `data/output/temp_univariate_report.html`
+- `data/output/temp_treemap_report.html`
+- temporary filtered sources such as `data/output/temp_treemap_source_<...>.csv`
+
+## Sweep Controls And Output Contract
+
+The dimensional sweep interface is defined in [`agents/schemas.py`](agents/schemas.py) and executed by [`tools/insight_engine.py`](tools/insight_engine.py).
+
+Supported runtime controls include:
+
+- `depth`: 1-way, 2-way, or explicit 3-way cohort intersections
+- `selected_columns`: constrain the sweep to named dimensions
+- `filters`: apply pandas-query style row filters before aggregation
+- `min_mac`: visibility floor for minimum actual death count
+- `top_n`: limit the JSON response while keeping full ranked CSV artifacts on disk
+- `sort_by`: rank by `AE_Ratio_Amount`, `AE_Ratio_Count`, or supported aggregate fields
+
+Typical result shape:
 
 ```json
 {
   "results": [
     {
-      "Dimensions": "Risk_Class=Standard Plus | Issue_Age_band=(45.0, 65.0]",
-      "Sum_MAC": 6,
-      "Sum_MOC": 481.67,
-      "Sum_MEC": 1.97,
-      "Sum_MAF": 4300000.0,
-      "Sum_MEF": 1338984.63,
-      "AE_Ratio_Count": 3.63,
-      "AE_Ratio_Amount": 3.21,
-      "AE_Count_CI": [1.52, 7.44],
-      "AE_Amount_CI": [1.34, 6.57]
+      "Dimensions": "Gender=F | Smoker=Yes",
+      "Sum_MAC": 9,
+      "Sum_MOC": 71.45,
+      "Sum_MEC": 3.75,
+      "Sum_MAF": 2100000.0,
+      "Sum_MEF": 1160000.0,
+      "AE_Ratio_Count": 2.4,
+      "AE_Ratio_Amount": 1.8,
+      "AE_Count_CI_Lower": 1.1,
+      "AE_Count_CI_Upper": 3.6,
+      "AE_Amount_CI_Lower": 0.9,
+      "AE_Amount_CI_Upper": 2.7
     }
-  ]
+  ],
+  "output_path": "data/output/sweep_summary_1_gender_smoker.csv",
+  "latest_output_path": "data/output/sweep_summary.csv"
 }
 ```
 
-This contract is defined in `agents/schemas.py` and consumed by AI agents for deterministic, auditable analysis workflows.
+## Methodology And Trust
+
+The repo is opinionated about actuarial control.
+
+### Deterministic Math Guardrails
+
+- LLMs do not compute A/E ratios, exposures, or confidence intervals themselves
+- all quantitative results come from deterministic Python functions
+- agents are instructed to explain tool outputs, not replace them
+
+### MOC Integrity Rules
+
+- active policy exposure may be fractional
+- `0 < MOC <= 1.0`
+- if `MAC == 1`, then `MOC` must be exactly `1.0`
+
+### Bayesian Credibility
+
+Mortality-rate credibility uses a Jeffreys-prior Beta posterior:
+
+- prior: `Beta(0.5, 0.5)`
+- posterior parameters: `alpha = MAC + 0.5`, `beta = MOC - MAC + 0.5`
+- 95% credible intervals propagate into count-based and amount-based A/E bounds
+
+### Amount-Based A/E Fallback
+
+For amount-based A/E intervals:
+
+- if `MAC > 0`, average claim severity uses `MAF / MAC`
+- if `MAC == 0`, the fallback uses `MEF / MEC`
+
+That prevents zero-claim cohorts from collapsing into unusable amount-based bounds.
+
+## Testing And UAT
+
+The current test suite covers the behaviors this README describes, including:
+
+- continuation routing from steward to actuary to analyst
+- deterministic sweep artifact creation and latest-output aliasing
+- visualization dependence on fresh analysis artifacts
+- schema exposure for selected sweep dimensions
+- handling of missing engineered columns
+
+Run the automated suite with:
+
+```bash
+uv run pytest
+```
+
+For manual validation, use the UAT checklist:
+
+- [`docs/UAT_Checklist.md`](docs/UAT_Checklist.md)
+
+For stakeholder walkthroughs, open:
+
+- [`docs/stakeholder_presentation.html`](docs/stakeholder_presentation.html)
