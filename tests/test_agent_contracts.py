@@ -4,7 +4,9 @@ from pathlib import Path
 import pandas as pd
 
 import agents.agent_actuary as agent_actuary_module
+import agents.agent_analyst as agent_analyst_module
 from agents.agent_actuary import ActuaryAgent
+from agents.agent_analyst import AnalystAgent
 from agents.agent_steward import DataStewardAgent
 from agents.schemas import DimensionalSweepSchema
 from tools import data_steward
@@ -101,3 +103,58 @@ def test_actuary_agent_returns_missing_column_guidance_for_unprepared_feature(tm
 
     assert "requested column(s) not found" in response
     assert "Run Data Steward first" in response
+
+
+def test_analyst_agent_filters_treemap_to_requested_pair(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    sweep_path = output_dir / "sweep_summary.csv"
+    sweep_path.write_text(
+        "Dimensions,Sum_MOC,Sum_MAF,AE_Ratio_Amount\n"
+        "Smoker=Yes | Risk_Class=Preferred Plus,71.45,2100000,13.07\n"
+        "Smoker=Yes | Issue_Age_band=1,69.10,2100000,9.43\n"
+        "Risk_Class=Standard Plus | Issue_Age_band=3,744.03,5600000,2.94\n"
+    )
+
+    captured = {}
+
+    def fake_generate_treemap_report(data_path: str, metric: str = "amount") -> str:
+        captured["data_path"] = data_path
+        captured["metric"] = metric
+        captured["dimensions"] = pd.read_csv(data_path)["Dimensions"].tolist()
+        return f"Treemap report generated and opened: {data_path}"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_analyst_module, "generate_treemap_report", fake_generate_treemap_report)
+
+    agent = AnalystAgent()
+    response = agent.run(
+        "Generate a treemap of the 2-way sweep on Risk Class and Smoker.",
+        data_path=str(sweep_path),
+    )
+
+    assert response.startswith("Treemap report generated and opened:")
+    assert captured["metric"] == "amount"
+    assert captured["dimensions"] == ["Smoker=Yes | Risk_Class=Preferred Plus"]
+
+
+def test_analyst_agent_rejects_unavailable_treemap_pair(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    sweep_path = output_dir / "sweep_summary.csv"
+    sweep_path.write_text(
+        "Dimensions,Sum_MOC,Sum_MAF,AE_Ratio_Amount\n"
+        "Smoker=Yes | Risk_Class=Preferred Plus,71.45,2100000,13.07\n"
+        "Smoker=Yes | Issue_Age_band=1,69.10,2100000,9.43\n"
+    )
+
+    monkeypatch.chdir(tmp_path)
+    agent = AnalystAgent()
+
+    response = agent.run(
+        "Generate a treemap of the 2-way sweep on Gender and Smoker.",
+        data_path=str(sweep_path),
+    )
+
+    assert "does not contain the requested pair" in response
+    assert "gender + smoker" in response.lower()

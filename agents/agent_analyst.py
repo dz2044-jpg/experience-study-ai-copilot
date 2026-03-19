@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
+import pandas as pd
+
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -44,6 +46,93 @@ class AnalystAgent:
             "generate_univariate_report": generate_univariate_report,
             "generate_treemap_report": generate_treemap_report,
         }
+
+    @staticmethod
+    def _normalize_dimension_name(name: str) -> str:
+        """Normalize user and dataset dimension names for matching."""
+        normalized = re.sub(r"[^a-z0-9]+", "_", name.strip().lower())
+        return re.sub(r"_+", "_", normalized).strip("_")
+
+    @classmethod
+    def _extract_requested_dimensions(cls, user_message: str) -> Optional[list[str]]:
+        """Parse an explicit treemap slice request such as 'on Gender and Smoker'."""
+        patterns = [
+            r"\bon\s+(.+?)(?:[?.]|$)",
+            r"\bfor\s+(.+?)(?:[?.]|$)",
+        ]
+        requested_segment: Optional[str] = None
+        for pattern in patterns:
+            match = re.search(pattern, user_message, flags=re.IGNORECASE)
+            if match:
+                requested_segment = match.group(1)
+                break
+
+        if not requested_segment:
+            return None
+
+        cleaned = requested_segment
+        for phrase in (
+            "the 2-way sweep",
+            "2-way sweep",
+            "pairwise sweep",
+            "latest sweep summary",
+            "latest sweep",
+            "sweep summary",
+            "treemap",
+            "heatmap",
+        ):
+            cleaned = re.sub(rf"\b{re.escape(phrase)}\b", "", cleaned, flags=re.IGNORECASE)
+        cleaned = cleaned.replace("×", " and ").replace(" x ", " and ")
+
+        tokens = [
+            token.strip(" `.")
+            for token in re.split(r",|\band\b|&", cleaned, flags=re.IGNORECASE)
+            if token.strip(" `.")
+        ]
+        if len(tokens) < 2:
+            return None
+        return [cls._normalize_dimension_name(token) for token in tokens[:2]]
+
+    @classmethod
+    def _filter_treemap_source_for_dimensions(cls, data_path: str, requested_dimensions: list[str]) -> tuple[Optional[str], Optional[str]]:
+        """
+        Filter a pairwise sweep artifact to a requested dimension pair.
+
+        Returns (filtered_path, error_message). When no explicit pair was requested,
+        the original path is returned unchanged.
+        """
+        if not requested_dimensions:
+            return (data_path, None)
+
+        df = pd.read_csv(data_path)
+        if "Dimensions" not in df.columns:
+            return (None, f"Visualization source is missing the required `Dimensions` column: {data_path}")
+
+        dimension_pairs: list[tuple[str, str]] = []
+        mask = []
+        requested_pair = tuple(sorted(requested_dimensions))
+        for label in df["Dimensions"].astype(str):
+            parts = [part.split("=")[0] for part in label.split(" | ") if "=" in part]
+            normalized_parts = tuple(sorted(cls._normalize_dimension_name(part) for part in parts))
+            dimension_pairs.append(normalized_parts)
+            mask.append(normalized_parts == requested_pair)
+
+        if not any(mask):
+            available_pairs = sorted({pair for pair in dimension_pairs if len(pair) == 2})
+            formatted_pairs = ", ".join(" + ".join(pair) for pair in available_pairs) if available_pairs else "none"
+            requested_label = " + ".join(requested_dimensions)
+            return (
+                None,
+                f"Unable to generate treemap: the current sweep artifact does not contain the requested pair `{requested_label}`. "
+                f"Available pairs in `{data_path}`: {formatted_pairs}.",
+            )
+
+        filtered_df = df[mask].copy()
+        requested_slug = "_".join(requested_dimensions)
+        filtered_path = Path("data/output") / f"temp_treemap_source_{requested_slug}.csv"
+        filtered_path.parent.mkdir(parents=True, exist_ok=True)
+        filtered_df.to_csv(filtered_path, index=False)
+        return (str(filtered_path), None)
 
     def _tools_spec(self) -> list[dict[str, Any]]:
         """Define visualization tools for OpenAI function calling."""
@@ -100,8 +189,16 @@ class AnalystAgent:
         self.last_data_path_used = resolved_data_path
 
         if "treemap" in msg or "heatmap" in msg:
+            requested_dimensions = self._extract_requested_dimensions(user_message) or []
+            filtered_path, error_message = self._filter_treemap_source_for_dimensions(
+                resolved_data_path,
+                requested_dimensions,
+            )
+            if error_message:
+                return error_message
             try:
-                return generate_treemap_report(data_path=resolved_data_path, metric=metric)
+                self.last_data_path_used = filtered_path
+                return generate_treemap_report(data_path=filtered_path or resolved_data_path, metric=metric)
             except Exception as exc:
                 return f"Unable to generate treemap report: {exc}"
 
@@ -113,6 +210,9 @@ class AnalystAgent:
     def run(self, user_message: str, data_path: Optional[str] = None) -> str:
         """Handle visualization requests using OpenAI tool calling."""
         self.last_data_path_used = data_path
+
+        if "treemap" in user_message.lower() or "heatmap" in user_message.lower():
+            return self._fallback_route(user_message, data_path=data_path)
 
         if not self.client:
             return self._fallback_route(user_message, data_path=data_path)
