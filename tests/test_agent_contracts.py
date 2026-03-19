@@ -238,12 +238,10 @@ def test_analyst_agent_filters_treemap_to_requested_pair(tmp_path, monkeypatch):
     assert captured["dimensions"] == ["Smoker=Yes | Risk_Class=Preferred Plus"]
 
 
-def test_analyst_agent_requests_confirmation_for_unavailable_treemap_pair(tmp_path, monkeypatch):
+def test_analyst_agent_rejects_unavailable_treemap_pair(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     sweep_path = output_dir / "sweep_summary.csv"
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
     sweep_path.write_text(
         "Dimensions,Sum_MOC,Sum_MAF,AE_Ratio_Amount\n"
         "Smoker=Yes | Risk_Class=Preferred Plus,71.45,2100000,13.07\n"
@@ -258,6 +256,5 @@ def test_analyst_agent_requests_confirmation_for_unavailable_treemap_pair(tmp_pa
         data_path=str(sweep_path),
     )
 
-    assert "reply `continue`" in response.lower()
-    assert "official 2-way sweep" in response.lower()
-    assert "`Gender` and `Smoker`" in response
+    assert "does not contain the requested pair" in response
+    assert "gender + smoker" in response.lower()

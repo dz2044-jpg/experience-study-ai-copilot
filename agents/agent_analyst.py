@@ -4,7 +4,6 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -33,16 +32,6 @@ then call the appropriate visualization tool.
 Be concise and professional. After running a tool, just confirm which chart was
 generated, which metric was used, and that it opened in the user's browser.
 """.strip()
-
-
-@dataclass
-class TreemapPreflightResult:
-    """Preflight outcome for treemap requests before any sweep math is run."""
-
-    status: str
-    requested_dimensions: list[str]
-    message: Optional[str] = None
-    resolved_columns: Optional[list[str]] = None
 
 
 class AnalystAgent:
@@ -103,91 +92,6 @@ class AnalystAgent:
         if len(tokens) < 2:
             return None
         return [cls._normalize_dimension_name(token) for token in tokens[:2]]
-
-    @classmethod
-    def _resolve_analysis_columns(
-        cls,
-        requested_dimensions: list[str],
-        analysis_path: str,
-    ) -> tuple[Optional[list[str]], list[str]]:
-        """Map normalized requested dimensions to concrete prepared dataset columns."""
-        path = Path(analysis_path)
-        if not path.exists():
-            return (None, requested_dimensions)
-
-        df = pd.read_csv(path, nrows=0)
-        column_lookup = {cls._normalize_dimension_name(col): col for col in df.columns}
-
-        resolved: list[str] = []
-        missing: list[str] = []
-        for dim in requested_dimensions:
-            matched = column_lookup.get(dim)
-            if matched:
-                resolved.append(matched)
-            else:
-                missing.append(dim)
-        return (resolved if not missing else None, missing)
-
-    @classmethod
-    def _list_available_pairs(cls, data_path: str) -> list[tuple[str, str]]:
-        """Read available 2-way dimension pairs from a sweep artifact."""
-        df = pd.read_csv(data_path)
-        if "Dimensions" not in df.columns:
-            return []
-
-        available_pairs: set[tuple[str, str]] = set()
-        for label in df["Dimensions"].astype(str):
-            parts = [part.split("=")[0] for part in label.split(" | ") if "=" in part]
-            normalized_parts = tuple(sorted(cls._normalize_dimension_name(part) for part in parts))
-            if len(normalized_parts) == 2:
-                available_pairs.add(normalized_parts)
-        return sorted(available_pairs)
-
-    @classmethod
-    def prepare_treemap_request(
-        cls,
-        user_message: str,
-        data_path: str,
-        analysis_path: str = "data/output/analysis_inforce.csv",
-    ) -> TreemapPreflightResult:
-        """
-        Inspect whether a treemap request can run immediately or needs an official sweep first.
-        """
-        requested_dimensions = cls._extract_requested_dimensions(user_message) or []
-        if len(requested_dimensions) != 2:
-            return TreemapPreflightResult(status="ready", requested_dimensions=requested_dimensions)
-
-        requested_pair = tuple(sorted(requested_dimensions))
-        available_pairs = cls._list_available_pairs(data_path)
-        if requested_pair in available_pairs:
-            return TreemapPreflightResult(status="ready", requested_dimensions=requested_dimensions)
-
-        resolved_columns, missing_columns = cls._resolve_analysis_columns(requested_dimensions, analysis_path)
-        if resolved_columns:
-            requested_label = " + ".join(requested_dimensions)
-            available_label = ", ".join(" + ".join(pair) for pair in available_pairs) if available_pairs else "none"
-            column_label = " and ".join(f"`{col}`" for col in resolved_columns)
-            return TreemapPreflightResult(
-                status="missing_pair_confirmation_required",
-                requested_dimensions=requested_dimensions,
-                resolved_columns=resolved_columns,
-                message=(
-                    f"The current sweep artifact `{data_path}` does not contain the requested pair `{requested_label}`. "
-                    f"Available pairs: {available_label}. Reply `continue` to run an official 2-way sweep on "
-                    f"{column_label} first, then generate the treemap."
-                ),
-            )
-
-        missing_label = ", ".join(f"`{col}`" for col in missing_columns) if missing_columns else f"`{analysis_path}`"
-        return TreemapPreflightResult(
-            status="missing_columns",
-            requested_dimensions=requested_dimensions,
-            message=(
-                f"Unable to generate treemap: the current sweep artifact `{data_path}` does not contain the requested pair "
-                f"`{' + '.join(requested_dimensions)}` and the prepared dataset is missing {missing_label}. "
-                "Run Data Steward first to prepare those features, then rerun the treemap."
-            ),
-        )
 
     @classmethod
     def _filter_treemap_source_for_dimensions(cls, data_path: str, requested_dimensions: list[str]) -> tuple[Optional[str], Optional[str]]:
@@ -285,11 +189,7 @@ class AnalystAgent:
         self.last_data_path_used = resolved_data_path
 
         if "treemap" in msg or "heatmap" in msg:
-            preflight = self.prepare_treemap_request(user_message, resolved_data_path)
-            if preflight.status != "ready":
-                return preflight.message or "Unable to prepare treemap request."
-
-            requested_dimensions = preflight.requested_dimensions
+            requested_dimensions = self._extract_requested_dimensions(user_message) or []
             filtered_path, error_message = self._filter_treemap_source_for_dimensions(
                 resolved_data_path,
                 requested_dimensions,

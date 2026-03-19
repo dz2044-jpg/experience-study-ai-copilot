@@ -32,8 +32,6 @@ class StudyOrchestrator:
         self.last_active_agent: Optional[Literal["STEWARD", "ACTUARY", "ANALYST"]] = None
         self.pending_analysis_prompt: Optional[str] = None
         self.pending_visualization_prompt: Optional[str] = None
-        self.pending_official_sweep_prompt: Optional[str] = None
-        self.pending_official_treemap_prompt: Optional[str] = None
         self.latest_analysis_output_path: Optional[str] = None
 
     @staticmethod
@@ -158,47 +156,6 @@ class StudyOrchestrator:
         self.last_active_agent = agent_name
         if agent_name != "ACTUARY":
             self.pending_visualization_prompt = None
-        self.pending_official_sweep_prompt = None
-        self.pending_official_treemap_prompt = None
-
-    @staticmethod
-    def _build_official_pair_sweep_prompt(selected_columns: list[str]) -> str:
-        """Create a deterministic actuarial prompt for an official pair sweep."""
-        if len(selected_columns) != 2:
-            raise ValueError("Official pair sweep prompt requires exactly two columns.")
-        column_label = " and ".join(selected_columns)
-        return (
-            f"Run a 2-way dimensional sweep on {column_label}, rank cohorts by AE_Ratio_Amount, "
-            "and return all cohorts for the requested pair for treemap visualization."
-        )
-
-    def _complete_confirmed_treemap_flow(self) -> str:
-        """Run the official pair sweep, then generate the requested treemap from that artifact."""
-        sweep_prompt = self.pending_official_sweep_prompt
-        treemap_prompt = self.pending_official_treemap_prompt
-        self.pending_official_sweep_prompt = None
-        self.pending_official_treemap_prompt = None
-
-        if not sweep_prompt or not treemap_prompt:
-            return "There is no pending treemap sweep confirmation to continue."
-
-        sweep_response = self.actuary.run(sweep_prompt)
-        self.last_active_agent = "ACTUARY"
-        self.pending_analysis_prompt = None
-        self.pending_visualization_prompt = None
-
-        if self._has_fresh_analysis_artifact(self.actuary.latest_output_path):
-            self.latest_analysis_output_path = self.actuary.latest_output_path
-        else:
-            self.latest_analysis_output_path = None
-            return sweep_response
-
-        analyst_response = self.analyst_agent.run(
-            treemap_prompt,
-            data_path=self.latest_analysis_output_path,
-        )
-        self.last_active_agent = "ANALYST"
-        return f"{sweep_response}\n\n{analyst_response}"
 
     def _route_to_steward(self, user_query: str) -> str:
         """Run data prep and queue a sensible follow-up analysis step."""
@@ -233,21 +190,6 @@ class StudyOrchestrator:
                 "Run an actuarial sweep first, or provide an explicit sweep summary CSV path."
             )
 
-        if any(token in user_query.lower() for token in ("treemap", "heatmap")):
-            preflight = self.analyst_agent.prepare_treemap_request(user_query, data_path=data_path)
-            if preflight.status == "missing_pair_confirmation_required":
-                self.pending_official_sweep_prompt = self._build_official_pair_sweep_prompt(
-                    preflight.resolved_columns or []
-                )
-                self.pending_official_treemap_prompt = user_query
-                self.pending_analysis_prompt = None
-                self.pending_visualization_prompt = None
-                return preflight.message or (
-                    "Reply `continue` to run an official 2-way sweep first, then generate the treemap."
-                )
-            if preflight.status in {"missing_columns", "invalid_pair_request"}:
-                return preflight.message or "Unable to prepare treemap request."
-
         response = self.analyst_agent.run(user_query, data_path=data_path)
         self._set_last_agent("ANALYST")
         self.pending_analysis_prompt = None
@@ -256,9 +198,6 @@ class StudyOrchestrator:
 
     def _handle_continue(self) -> str:
         """Continue the next pending step using instance-level state."""
-        if self.pending_official_sweep_prompt and self.pending_official_treemap_prompt:
-            return self._complete_confirmed_treemap_flow()
-
         if self.pending_analysis_prompt:
             prompt = self.pending_analysis_prompt
             self.pending_analysis_prompt = None

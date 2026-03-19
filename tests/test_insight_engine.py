@@ -61,27 +61,3 @@ def test_pairwise_combinatorial_sweep_generates_all_requested_pairs(tmp_path, mo
 
 def test_compute_ae_ci_amount_returns_none_for_zero_denominators():
     assert compute_ae_ci_amount(0, 1, 0, 0, 0) == (None, None)
-
-
-def test_run_dimensional_sweep_returns_all_rows_when_top_n_is_none(tmp_path, monkeypatch):
-    output_dir = tmp_path / "data" / "output"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
-
-    monkeypatch.chdir(tmp_path)
-
-    result = json.loads(
-        run_dimensional_sweep(
-            depth=2,
-            selected_columns=["Gender", "Smoker"],
-            min_mac=0,
-            top_n=None,
-            data_path=str(analysis_path),
-        )
-    )
-
-    persisted = pd.read_csv(tmp_path / result["output_path"])
-    assert len(result["results"]) == 4
-    assert len(persisted) == 4

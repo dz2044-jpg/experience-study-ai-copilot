@@ -194,21 +194,8 @@ class ActuaryAgent:
         return 1
 
     @staticmethod
-    def _extract_top_n(user_message: str) -> Optional[int]:
+    def _extract_top_n(user_message: str) -> int:
         """Read a top-N hint when the user asked for a ranked subset."""
-        msg = user_message.lower()
-        if any(
-            phrase in msg
-            for phrase in (
-                "all cohorts",
-                "all rows",
-                "full result set",
-                "full results",
-                "return all",
-                "top_n=all",
-            )
-        ):
-            return None
         top_match = re.search(r"\btop\s+(\d+)\b", user_message.lower())
         if top_match:
             return int(top_match.group(1))

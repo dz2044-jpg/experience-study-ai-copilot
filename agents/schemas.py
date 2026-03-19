@@ -106,12 +106,11 @@ class DimensionalSweepSchema(BaseModel):
             "Output is a JSON list of cohort objects with Actual vs Expected counts/amounts and 95% CIs."
         ),
     )
-    top_n: Optional[int] = Field(
+    top_n: int = Field(
         default=20,
         ge=1,
         description=(
-            "Maximum number of ranked cohort rows to return from the JSON list output. "
-            "Set to null to return all rows for visualization-oriented sweeps."
+            "Maximum number of ranked cohort rows to return from the JSON list output."
         ),
     )
     sort_by: str = Field(
