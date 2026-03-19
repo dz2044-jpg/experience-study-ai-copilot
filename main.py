@@ -34,7 +34,7 @@ def render_app() -> None:
         response = st.session_state["orchestrator"].process_query(prompt.strip())
         st.session_state["history"].append({"prompt": prompt.strip(), "response": response})
 
-    for item in reversed(st.session_state["history"]):
+    for item in st.session_state["history"]:
         st.markdown(f"**You**: {item['prompt']}")
         st.markdown(f"**Copilot**: {item['response']}")
 

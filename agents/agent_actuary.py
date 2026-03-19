@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
+import pandas as pd
+
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -57,9 +59,13 @@ STRICT ROLE BOUNDARIES & DATA SOURCES:
 class ActuaryAgent:
     """Agent wrapper that routes actuarial questions to dimensional sweep tooling."""
 
+    DEFAULT_ANALYSIS_PATH = "data/output/analysis_inforce.csv"
+
     def __init__(self, model: str = "gpt-5.4") -> None:
         self.model = model
         self.client = build_openai_client()
+        self.latest_output_path: Optional[str] = None
+        self.latest_output_alias_path: Optional[str] = None
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "run_dimensional_sweep": run_dimensional_sweep,
@@ -94,7 +100,193 @@ class ActuaryAgent:
             return "N/A"
         return f"[{ci[0]:.2f}, {ci[1]:.2f}]"
 
+    def _reset_sweep_artifacts(self) -> None:
+        """Clear any previously recorded sweep output paths before a new run."""
+        self.latest_output_path = None
+        self.latest_output_alias_path = None
+
+    def _record_sweep_artifacts(self, result_json: str) -> None:
+        """Capture deterministic sweep artifact paths from tool JSON."""
+        try:
+            payload = json.loads(result_json)
+        except json.JSONDecodeError:
+            return
+
+        if payload.get("error"):
+            return
+
+        output_path = payload.get("output_path")
+        latest_alias_path = payload.get("latest_output_path")
+        if isinstance(output_path, str) and output_path.strip():
+            self.latest_output_path = output_path
+        if isinstance(latest_alias_path, str) and latest_alias_path.strip():
+            self.latest_output_alias_path = latest_alias_path
+
+    @staticmethod
+    def _normalize_column_name(name: str) -> str:
+        """Normalize column names for case-insensitive matching."""
+        normalized = re.sub(r"[^a-z0-9]+", "_", name.strip().lower())
+        return re.sub(r"_+", "_", normalized).strip("_")
+
+    @classmethod
+    def _is_explicit_sweep_request(cls, user_message: str) -> bool:
+        """Identify requests that should deterministically execute the sweep tool."""
+        msg = user_message.lower()
+        if "sweep" in msg:
+            return True
+        return "a/e ratio" in msg and any(token in msg for token in ("run", "calculate", "show"))
+
+    @classmethod
+    def _extract_depth(cls, user_message: str) -> int:
+        """Infer requested sweep depth from the prompt."""
+        msg = user_message.lower()
+        depth_match = re.search(r"\b([123])[- ]way\b", msg)
+        if depth_match:
+            return int(depth_match.group(1))
+        if "pairwise" in msg or "all pairs" in msg:
+            return 2
+        return 1
+
+    @staticmethod
+    def _extract_top_n(user_message: str) -> int:
+        """Read a top-N hint when the user asked for a ranked subset."""
+        top_match = re.search(r"\btop\s+(\d+)\b", user_message.lower())
+        if top_match:
+            return int(top_match.group(1))
+        return 20
+
+    @staticmethod
+    def _extract_min_mac(user_message: str) -> int:
+        """Read an explicit visibility floor from the prompt."""
+        msg = user_message.lower()
+        min_match = re.search(r"min_mac\s*=\s*(\d+)", msg)
+        if min_match:
+            return int(min_match.group(1))
+
+        at_least_match = re.search(r"at least\s+(\d+)\s+deaths?", msg)
+        if at_least_match:
+            return int(at_least_match.group(1))
+        return 1
+
+    @staticmethod
+    def _extract_sort_by(user_message: str) -> str:
+        """Map ranking phrases to supported sort columns."""
+        msg = user_message.lower()
+        explicit_match = re.search(r"\b(ae_ratio_amount|ae_ratio_count|sum_mac|sum_moc|sum_mec|sum_maf|sum_mef)\b", msg)
+        if explicit_match:
+            explicit_map = {
+                "ae_ratio_amount": "AE_Ratio_Amount",
+                "ae_ratio_count": "AE_Ratio_Count",
+                "sum_mac": "Sum_MAC",
+                "sum_moc": "Sum_MOC",
+                "sum_mec": "Sum_MEC",
+                "sum_maf": "Sum_MAF",
+                "sum_mef": "Sum_MEF",
+            }
+            return explicit_map[explicit_match.group(1)]
+
+        if "rank" in msg or "sort" in msg:
+            if "count" in msg:
+                return "AE_Ratio_Count"
+            if "amount" in msg:
+                return "AE_Ratio_Amount"
+        return "AE_Ratio_Amount"
+
+    @classmethod
+    def _load_analysis_columns(cls, data_path: str) -> Optional[list[str]]:
+        """Read available columns from the prepared analysis dataset."""
+        path = Path(data_path)
+        if not path.exists():
+            return None
+        df = pd.read_csv(path, nrows=0)
+        return list(df.columns)
+
+    @classmethod
+    def _extract_requested_columns(cls, user_message: str, available_columns: list[str]) -> tuple[Optional[list[str]], list[str]]:
+        """Parse explicit requested dimensions from phrases like 'on X, Y' or 'between A, B, and C'."""
+        patterns = [
+            r"\bbetween\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+with\b|,?\s+where\b|,?\s+to\b|[?.]|$)",
+            r"\bacross\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+with\b|,?\s+where\b|,?\s+to\b|[?.]|$)",
+            r"\bon\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+with\b|,?\s+where\b|,?\s+to\b|[?.]|$)",
+        ]
+        requested_segment: Optional[str] = None
+        for pattern in patterns:
+            match = re.search(pattern, user_message, flags=re.IGNORECASE)
+            if match:
+                requested_segment = match.group(1)
+                break
+
+        if not requested_segment:
+            return (None, [])
+
+        cleaned_segment = requested_segment.replace("×", ",").replace(" x ", ", ")
+        cleaned_segment = re.sub(r"\bfor all pairs\b", "", cleaned_segment, flags=re.IGNORECASE)
+        cleaned_segment = re.sub(r"\ball pairs\b", "", cleaned_segment, flags=re.IGNORECASE)
+        tokens = [
+            token.strip(" `.")
+            for token in re.split(r",|\band\b|&", cleaned_segment, flags=re.IGNORECASE)
+            if token.strip(" `.")
+        ]
+
+        column_lookup = {cls._normalize_column_name(col): col for col in available_columns}
+        matched: list[str] = []
+        missing: list[str] = []
+        for token in tokens:
+            normalized = cls._normalize_column_name(token)
+            if not normalized:
+                continue
+            resolved = column_lookup.get(normalized)
+            if resolved:
+                if resolved not in matched:
+                    matched.append(resolved)
+            else:
+                missing.append(token)
+
+        return (matched or None, missing)
+
+    def _deterministic_sweep_route(self, user_message: str) -> Optional[str]:
+        """Run explicit sweep requests locally so the model cannot ask for known A/E mappings."""
+        if not self._is_explicit_sweep_request(user_message):
+            return None
+
+        available_columns = self._load_analysis_columns(self.DEFAULT_ANALYSIS_PATH)
+        if available_columns is None:
+            return (
+                "Unable to complete sweep: `data/output/analysis_inforce.csv` is missing. "
+                "Run Data Steward first to prepare the analysis dataset, then rerun the sweep."
+            )
+
+        selected_columns, missing_columns = self._extract_requested_columns(user_message, available_columns)
+        if missing_columns:
+            missing_list = ", ".join(f"`{col}`" for col in missing_columns)
+            return (
+                f"Unable to complete sweep: requested column(s) not found in `{self.DEFAULT_ANALYSIS_PATH}`: {missing_list}. "
+                "Run Data Steward first to create those features, then rerun the sweep."
+            )
+
+        depth = self._extract_depth(user_message)
+        sort_by = self._extract_sort_by(user_message)
+        min_mac = self._extract_min_mac(user_message)
+        top_n = self._extract_top_n(user_message)
+
+        sweep = run_dimensional_sweep(
+            depth=depth,
+            selected_columns=selected_columns,
+            min_mac=min_mac,
+            top_n=top_n,
+            sort_by=sort_by,
+            data_path=self.DEFAULT_ANALYSIS_PATH,
+        )
+
+        selected_label = ", ".join(selected_columns) if selected_columns else "auto-detected dimensions"
+        context = (
+            f"{depth}-way dimensional sweep complete on the prepared analysis dataset "
+            f"using {selected_label}, ranked by {sort_by}."
+        )
+        return self._summarize_sweep(sweep, context)
+
     def _summarize_sweep(self, result_json: str, context: str) -> str:
+        self._record_sweep_artifacts(result_json)
         payload = json.loads(result_json)
         if "error" in payload:
             return f"Unable to complete sweep: {payload['error']}"
@@ -181,6 +373,12 @@ class ActuaryAgent:
 
     def run(self, user_message: str) -> str:
         """Handle message with OpenAI tool-calling."""
+        self._reset_sweep_artifacts()
+
+        deterministic_response = self._deterministic_sweep_route(user_message)
+        if deterministic_response is not None:
+            return deterministic_response
+
         if not self.client:
             return self._fallback_route(user_message)
 
@@ -218,6 +416,8 @@ class ActuaryAgent:
                 name = tool_call.function.name
                 args = json.loads(tool_call.function.arguments or "{}")
                 tool_result = self._execute_tool(name, args)
+                if name == "run_dimensional_sweep":
+                    self._record_sweep_artifacts(tool_result)
                 messages.append(
                     {
                         "role": "tool",

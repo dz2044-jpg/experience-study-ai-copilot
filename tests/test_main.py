@@ -55,3 +55,30 @@ def test_render_app_constructs_streamlit_shell(monkeypatch):
 
     assert "orchestrator" in dummy_st.session_state
     assert any(call[0] == "title" for call in dummy_st.calls)
+
+
+def test_render_app_renders_history_in_chronological_order(monkeypatch):
+    dummy_st = _DummyStreamlit()
+    dummy_st.session_state["history"] = [
+        {"prompt": "first prompt", "response": "first response"},
+        {"prompt": "second prompt", "response": "second response"},
+    ]
+    monkeypatch.setitem(sys.modules, "streamlit", dummy_st)
+
+    main = importlib.import_module("main")
+    main = importlib.reload(main)
+
+    class DummyOrchestrator:
+        def process_query(self, prompt):
+            return f"processed: {prompt}"
+
+    monkeypatch.setattr(main, "StudyOrchestrator", DummyOrchestrator)
+    main.render_app()
+
+    markdown_calls = [call[1] for call in dummy_st.calls if call[0] == "markdown"]
+    assert markdown_calls == [
+        "**You**: first prompt",
+        "**Copilot**: first response",
+        "**You**: second prompt",
+        "**Copilot**: second response",
+    ]

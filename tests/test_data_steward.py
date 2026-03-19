@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import time
 
@@ -66,3 +67,14 @@ def test_run_actuarial_data_checks_flags_non_numeric_raw_actuarial_values(tmp_pa
 
     assert '"status": "FAIL"' in result
     assert "MAC contains 1 non-numeric raw value" in result
+
+
+def test_run_actuarial_data_checks_keeps_actuarial_fields_numerical(tmp_path):
+    source = tmp_path / "inforce.csv"
+    source.write_text(FIXTURE_PATH.read_text())
+
+    result = json.loads(data_steward.run_actuarial_data_checks(str(source)))
+    feature_classification = result["feature_classification"]
+
+    for col in ["MAC", "MEC", "MOC", "MAF", "MEF"]:
+        assert feature_classification[col] == "numerical"

@@ -68,6 +68,22 @@ def _find_raw_non_numeric_values(data_path: str) -> list[str]:
     return issues
 
 
+def _classify_feature_type(df: pd.DataFrame, column: str) -> str:
+    """
+    Classify a column for Steward reporting.
+
+    Core actuarial measure fields remain numerical even when they have low cardinality
+    because their semantic meaning is quantitative rather than dimensional.
+    """
+    if column in ACTUARIAL_NUMERICS:
+        return "numerical"
+
+    series = df[column]
+    if pd.api.types.is_numeric_dtype(series):
+        return "numerical" if series.nunique() > 20 else "categorical"
+    return "categorical"
+
+
 def profile_dataset(data_path: str = "data/input/synthetic_inforce.csv") -> str:
     """
     Profile the dataset and return descriptive statistics as a JSON string.
@@ -152,15 +168,7 @@ def run_actuarial_data_checks(data_path: str = "data/input/synthetic_inforce.csv
     # --- Feature classification ---
     feature_classification = {}
     for col in df.columns:
-        if pd.api.types.is_numeric_dtype(df[col]):
-            # MOC contains fractional exposure values; always numerical
-            if col == "MOC":
-                feature_classification[col] = "numerical"
-            else:
-                n_unique = df[col].nunique()
-                feature_classification[col] = "numerical" if n_unique > 20 else "categorical"
-        else:
-            feature_classification[col] = "categorical"
+        feature_classification[col] = _classify_feature_type(df, col)
 
     # --- Value limits ---
     if "MAC" in df.columns:

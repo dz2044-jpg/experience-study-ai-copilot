@@ -2,9 +2,10 @@
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,7 @@ class AnalystAgent:
     def __init__(self, model: str = "gpt-5.3-codex") -> None:
         self.model = model
         self.client = build_openai_client()
+        self.last_data_path_used: Optional[str] = None
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "generate_univariate_report": generate_univariate_report,
@@ -71,6 +73,7 @@ class AnalystAgent:
         # Map visualization schema fields to underlying function signatures.
         metric = args.get("metric", "amount")
         data_path = args.get("data_path", "data/output/sweep_summary.csv")
+        self.last_data_path_used = data_path
 
         try:
             if tool_name == "generate_univariate_report":
@@ -81,31 +84,51 @@ class AnalystAgent:
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             return json.dumps({"error": f"{tool_name} failed: {str(exc)}"}, indent=2)
 
-    def _fallback_route(self, user_message: str) -> str:
+    @staticmethod
+    def _extract_csv_path(user_message: str) -> Optional[str]:
+        """Extract an explicit CSV path from the request when provided."""
+        path_match = re.search(r"((?:/|data/)[\w./-]+\.csv)", user_message)
+        if not path_match:
+            return None
+        return path_match.group(1)
+
+    def _fallback_route(self, user_message: str, data_path: Optional[str] = None) -> str:
         """Deterministic fallback when no API key is configured."""
         msg = user_message.lower()
         metric = "count" if "count" in msg else "amount"
-        data_path = "data/output/sweep_summary.csv"
+        resolved_data_path = data_path or self._extract_csv_path(user_message) or "data/output/sweep_summary.csv"
+        self.last_data_path_used = resolved_data_path
 
         if "treemap" in msg or "heatmap" in msg:
             try:
-                return generate_treemap_report(data_path=data_path, metric=metric)
+                return generate_treemap_report(data_path=resolved_data_path, metric=metric)
             except Exception as exc:
                 return f"Unable to generate treemap report: {exc}"
 
         try:
-            return generate_univariate_report(data_path=data_path, metric=metric)
+            return generate_univariate_report(data_path=resolved_data_path, metric=metric)
         except Exception as exc:
             return f"Unable to generate univariate report: {exc}"
 
-    def run(self, user_message: str) -> str:
+    def run(self, user_message: str, data_path: Optional[str] = None) -> str:
         """Handle visualization requests using OpenAI tool calling."""
+        self.last_data_path_used = data_path
+
         if not self.client:
-            return self._fallback_route(user_message)
+            return self._fallback_route(user_message, data_path=data_path)
+
+        resolved_data_path = data_path or self._extract_csv_path(user_message)
+        effective_message = user_message
+        if resolved_data_path:
+            effective_message = (
+                f"{user_message}\n\n"
+                f"Use this exact visualization input CSV path: {resolved_data_path}"
+            )
+            self.last_data_path_used = resolved_data_path
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
+            {"role": "user", "content": effective_message},
         ]
 
         for _ in range(4):
@@ -118,7 +141,7 @@ class AnalystAgent:
                 )
             except Exception as exc:
                 # Keep deterministic local usability when network/proxy is unavailable.
-                return self._fallback_route(user_message)
+                return self._fallback_route(user_message, data_path=resolved_data_path)
 
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Literal, Optional
@@ -31,6 +32,7 @@ class StudyOrchestrator:
         self.last_active_agent: Optional[Literal["STEWARD", "ACTUARY", "ANALYST"]] = None
         self.pending_analysis_prompt: Optional[str] = None
         self.pending_visualization_prompt: Optional[str] = None
+        self.latest_analysis_output_path: Optional[str] = None
 
     @staticmethod
     def _is_continue_message(user_query: str) -> bool:
@@ -59,9 +61,95 @@ class StudyOrchestrator:
         )
 
     @staticmethod
-    def _default_visualization_prompt() -> str:
+    def _default_visualization_prompt(data_path: str) -> str:
         """Default next-step visualization after an analysis run completes."""
-        return "Create a scatter report using the amount metric from the latest sweep summary."
+        return f"Create a scatter report using the amount metric from this sweep summary CSV: {data_path}"
+
+    @staticmethod
+    def _extract_csv_path(user_query: str) -> Optional[str]:
+        """Extract an explicit CSV path from the user's request when present."""
+        path_match = re.search(r"((?:/|data/)[\w./-]+\.csv)", user_query)
+        if not path_match:
+            return None
+        return path_match.group(1)
+
+    @staticmethod
+    def _has_visualization_intent(query: str) -> bool:
+        visualize_hits = [
+            "chart",
+            "plot",
+            "visual",
+            "visualize",
+            "treemap",
+            "scatter",
+            "graph",
+            "report",
+            "heatmap",
+        ]
+        return any(k in query for k in visualize_hits)
+
+    @staticmethod
+    def _has_analysis_intent(query: str) -> bool:
+        analysis_hits = [
+            "a/e",
+            "sweep",
+            "ci",
+            "confidence interval",
+            "analysis",
+            "worst-performing",
+            "ratio",
+            "cohort",
+            "mortality",
+            "exposure",
+            "calculate",
+            "run",
+            "trend",
+        ]
+        return any(k in query for k in analysis_hits)
+
+    @staticmethod
+    def _has_feature_engineering_intent(query: str) -> bool:
+        """Detect explicit requests to engineer columns rather than reference existing band columns."""
+        feature_patterns = [
+            r"\bgroup\b.*\binto\b.*\bbands?\b",
+            r"\bcreate\b.*\bbands?\b",
+            r"\bregroup\b",
+            r"\bbucket\b",
+            r"\bband\b.*\bcolumn\b",
+            r"\bfeature engineering\b",
+        ]
+        return any(re.search(pattern, query) for pattern in feature_patterns)
+
+    @classmethod
+    def _has_data_prep_intent(cls, query: str) -> bool:
+        prep_hits = [
+            "read",
+            "profile",
+            "validate",
+            "check the data",
+            "check data",
+            "check the dataset",
+            "clean",
+            "prepare",
+            "missing values",
+            "dataset",
+            "inforce",
+        ]
+        return any(k in query for k in prep_hits) or cls._has_feature_engineering_intent(query)
+
+    @staticmethod
+    def _has_fresh_analysis_artifact(path: Optional[str]) -> bool:
+        """Return True only when the current-session sweep artifact exists on disk."""
+        return bool(path and Path(path).exists())
+
+    def _resolve_visualization_data_path(self, user_query: str) -> Optional[str]:
+        """Choose the visualization input path, preferring explicit user paths then fresh session artifacts."""
+        explicit_path = self._extract_csv_path(user_query)
+        if explicit_path:
+            return explicit_path
+        if self._has_fresh_analysis_artifact(self.latest_analysis_output_path):
+            return self.latest_analysis_output_path
+        return None
 
     def _set_last_agent(self, agent_name: Literal["STEWARD", "ACTUARY", "ANALYST"]) -> None:
         """Track the last active specialist and clear stale pending work."""
@@ -75,6 +163,7 @@ class StudyOrchestrator:
         self._set_last_agent("STEWARD")
         self.pending_analysis_prompt = self._default_analysis_prompt()
         self.pending_visualization_prompt = None
+        self.latest_analysis_output_path = None
         return response
 
     def _route_to_actuary(self, user_query: str) -> str:
@@ -82,12 +171,26 @@ class StudyOrchestrator:
         response = self.actuary.run(user_query)
         self._set_last_agent("ACTUARY")
         self.pending_analysis_prompt = None
-        self.pending_visualization_prompt = self._default_visualization_prompt()
+        if self._has_fresh_analysis_artifact(self.actuary.latest_output_path):
+            self.latest_analysis_output_path = self.actuary.latest_output_path
+            self.pending_visualization_prompt = self._default_visualization_prompt(
+                self.latest_analysis_output_path
+            )
+        else:
+            self.latest_analysis_output_path = None
+            self.pending_visualization_prompt = None
         return response
 
     def _route_to_analyst(self, user_query: str) -> str:
         """Run visualization and clear pending visualization follow-ups."""
-        response = self.analyst_agent.run(user_query)
+        data_path = self._resolve_visualization_data_path(user_query)
+        if not data_path:
+            return (
+                "I do not have a fresh sweep artifact for this session. "
+                "Run an actuarial sweep first, or provide an explicit sweep summary CSV path."
+            )
+
+        response = self.analyst_agent.run(user_query, data_path=data_path)
         self._set_last_agent("ANALYST")
         self.pending_analysis_prompt = None
         self.pending_visualization_prompt = None
@@ -108,7 +211,14 @@ class StudyOrchestrator:
         if self.last_active_agent == "STEWARD":
             return self._route_to_actuary(self._default_analysis_prompt())
         if self.last_active_agent == "ACTUARY":
-            return self._route_to_analyst(self._default_visualization_prompt())
+            if self._has_fresh_analysis_artifact(self.latest_analysis_output_path):
+                return self._route_to_analyst(
+                    self._default_visualization_prompt(self.latest_analysis_output_path)
+                )
+            return (
+                "The last analysis did not produce a fresh sweep artifact to visualize. "
+                "Run a new actuarial sweep first."
+            )
         if self.last_active_agent == "ANALYST":
             return "The last step was already a visualization. Ask for a new analysis or chart."
         return (
@@ -118,62 +228,22 @@ class StudyOrchestrator:
     def _heuristic_classify(self, user_query: str) -> Intent:
         """Fast deterministic fallback classifier when API key is unavailable."""
         q = user_query.lower()
-        prep_hits = [
-            "read",
-            "profile",
-            "validate",
-            "check",
-            "band",
-            "regroup",
-            "clean",
-            "prepare",
-            "column",
-            "feature",
-            "bucket",
-            "dataset",
-            "inforce",
-        ]
-        analysis_hits = [
-            "a/e",
-            "sweep",
-            "ci",
-            "confidence interval",
-            "analysis",
-            "worst-performing",
-            "ratio",
-            "cohort",
-            "mortality",
-            "exposure",
-            "calculate",
-            "run",
-            "trend",
-        ]
-        visualize_hits = [
-            "chart",
-            "plot",
-            "visual",
-            "visualize",
-            "treemap",
-            "scatter",
-            "graph",
-            "report",
-            "heatmap",
-        ]
-        has_prep = any(k in q for k in prep_hits)
-        has_analysis = any(k in q for k in analysis_hits)
-        has_visualize = any(k in q for k in visualize_hits)
         if self._is_continue_message(user_query):
             return "CONTINUE"
 
+        has_visualize = self._has_visualization_intent(q)
+        has_analysis = self._has_analysis_intent(q)
+        has_prep = self._has_data_prep_intent(q)
+
         if has_visualize:
             return "VISUALIZE"
+        if has_analysis and not has_prep:
+            return "ANALYSIS"
         if has_prep and has_analysis:
             # NO CHAINING: classify only the first logical step.
             return "DATA_PREP"
         if has_prep:
             return "DATA_PREP"
-        if has_analysis:
-            return "ANALYSIS"
         return "GENERAL"
 
     def _classify_intent(self, user_query: str) -> Intent:
@@ -225,6 +295,9 @@ class StudyOrchestrator:
             response_json = json.loads(clean_response)
             intent = str(response_json.get("intent", "GENERAL")).strip().upper()
             if intent in {"GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"}:
+                heuristic_intent = self._heuristic_classify(user_query)
+                if intent == "DATA_PREP" and heuristic_intent == "ANALYSIS":
+                    return heuristic_intent
                 return intent  # type: ignore[return-value]
         except json.JSONDecodeError as exc:
             # Keep conversation flowing even if classifier returns malformed JSON.
@@ -240,25 +313,11 @@ class StudyOrchestrator:
         if intent == "GENERAL":
             # Secondary guardrail routing for ambiguous natural phrasing.
             q = user_query.lower()
-            if any(
-                k in q
-                for k in (
-                    "read",
-                    "profile",
-                    "validate",
-                    "band",
-                    "regroup",
-                    "feature",
-                    "column",
-                    "bucket",
-                    "dataset",
-                    "inforce",
-                )
-            ):
-                return self._route_to_steward(user_query)
-            if any(k in q for k in ("a/e", "sweep", "ci", "confidence", "mortality", "ratio", "cohort", "trend")):
+            if self._has_analysis_intent(q) and not self._has_data_prep_intent(q):
                 return self._route_to_actuary(user_query)
-            if any(k in q for k in ("chart", "plot", "visual", "treemap", "scatter", "graph", "heatmap")):
+            if self._has_data_prep_intent(q):
+                return self._route_to_steward(user_query)
+            if self._has_visualization_intent(q):
                 return self._route_to_analyst(user_query)
             return (
                 "I can help with data preparation, actuarial analysis, or visualization. "
