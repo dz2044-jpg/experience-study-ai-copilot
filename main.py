@@ -22,21 +22,22 @@ def render_app() -> None:
     if "history" not in st.session_state:
         st.session_state["history"] = []
 
-    with st.form("copilot_prompt", clear_on_submit=True):
-        prompt = st.text_area(
-            "Request",
-            placeholder="Example: Profile the inforce dataset, then continue to the next step.",
-            height=140,
-        )
-        submitted = st.form_submit_button("Run")
-
-    if submitted and prompt.strip():
-        response = st.session_state["orchestrator"].process_query(prompt.strip())
-        st.session_state["history"].append({"prompt": prompt.strip(), "response": response})
-
     for item in st.session_state["history"]:
-        st.markdown(f"**You**: {item['prompt']}")
-        st.markdown(f"**Copilot**: {item['response']}")
+        with st.chat_message("user"):
+            st.markdown(item["prompt"])
+        with st.chat_message("assistant"):
+            st.markdown(item["response"])
+
+    prompt = st.chat_input("Ask the copilot to profile data, run a sweep, or generate a chart.")
+    if prompt and prompt.strip():
+        cleaned_prompt = prompt.strip()
+        with st.chat_message("user"):
+            st.markdown(cleaned_prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = st.session_state["orchestrator"].process_query(cleaned_prompt)
+            st.markdown(response)
+        st.session_state["history"].append({"prompt": cleaned_prompt, "response": response})
 
 
 def main() -> None:
