@@ -7,22 +7,22 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from dotenv import load_dotenv
-from openai import OpenAI
-
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from agents.schemas import ProfileDatasetSchema, CategoricalBandingSchema
+from agents.openai_compat import build_openai_client
+from agents.schemas import (
+    CategoricalBandingSchema,
+    ProfileDatasetSchema,
+    RegroupCategoricalSchema,
+)
 
 from tools.data_steward import (
     create_categorical_bands,
     profile_dataset,
+    regroup_categorical_features,
     run_actuarial_data_checks,
 )
 
@@ -49,12 +49,13 @@ class DataStewardAgent:
 
     def __init__(self, model: str = "gpt-5-mini") -> None:
         self.model = model
-        self.client: OpenAI = client
+        self.client = build_openai_client()
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "profile_dataset": profile_dataset,
             "run_actuarial_data_checks": run_actuarial_data_checks,
             "create_categorical_bands": create_categorical_bands,
+            "regroup_categorical_features": regroup_categorical_features,
         }
 
     def _tools_spec(self) -> list[dict[str, Any]]:
@@ -84,6 +85,14 @@ class DataStewardAgent:
                     "parameters": CategoricalBandingSchema.model_json_schema(),
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "regroup_categorical_features",
+                    "description": "Regroup categorical values into a derived analysis feature and save to analysis dataset.",
+                    "parameters": RegroupCategoricalSchema.model_json_schema(),
+                },
+            },
         ]
 
     def _execute_tool(self, tool_name: str, args: dict[str, Any]) -> str:
@@ -93,9 +102,12 @@ class DataStewardAgent:
         if tool_name == "create_categorical_bands" and "operation" in args:
             # If FeatureEngineeringSchema is used as alias, strip non-function key.
             args = {k: v for k, v in args.items() if k != "operation"}
-        if tool_name == "create_categorical_bands" and "data_path" in args and "source_path" not in args:
-            # Schema alias compatibility: data_path maps to source_path.
-            args["source_path"] = args.pop("data_path")
+        if tool_name in {"create_categorical_bands", "regroup_categorical_features"}:
+            if "data_path" in args and "source_path" not in args:
+                # Schema alias compatibility: data_path maps to source_path.
+                args["source_path"] = args.pop("data_path")
+            else:
+                args.pop("data_path", None)
         elif "data_path" in args:
             args.pop("data_path")
 
@@ -147,6 +159,44 @@ class DataStewardAgent:
                 f"Tool JSON:\n{result}"
             )
 
+        if "regroup" in msg:
+            column_match = re.search(
+                r"for the\s+([A-Za-z_][A-Za-z0-9_]*)\s+column",
+                user_message,
+                re.IGNORECASE,
+            )
+            mapping_match = re.search(r"(\{.*\})", user_message)
+            if not column_match or not mapping_match:
+                return (
+                    "To regroup a categorical column without OpenAI access, provide the source column "
+                    "and a JSON mapping dictionary, for example: "
+                    "`Regroup categories for the Risk_Class column using {\"Standard Plus\": \"Standard\"}`."
+                )
+
+            mapping_text = mapping_match.group(1)
+            try:
+                mapping_dict = json.loads(mapping_text)
+            except json.JSONDecodeError:
+                return "Mapping dictionary must be valid JSON when using deterministic regrouping fallback."
+
+            source_column = column_match.group(1)
+            source_path = "data/output/analysis_inforce.csv"
+            if not Path(source_path).exists():
+                source_path = "data/input/synthetic_inforce.csv"
+
+            result = regroup_categorical_features(
+                source_column=source_column,
+                mapping_dict=mapping_dict,
+                source_path=source_path,
+                output_path="data/output/analysis_inforce.csv",
+            )
+            return (
+                f"Regrouping complete for `{source_column}`.\n"
+                f"Source data: `{source_path}`.\n"
+                f"Transformation saved to `data/output/analysis_inforce.csv`.\n"
+                f"Tool JSON:\n{result}"
+            )
+
         return (
             "I can help with profiling, actuarial data checks, and categorical banding. "
             "Please specify a dataset path and transformation request."
@@ -154,8 +204,8 @@ class DataStewardAgent:
 
     def run(self, user_message: str) -> str:
         """Handle a user message using OpenAI tool-calling."""
-        if not os.getenv("OPENAI_API_KEY"):
-            return "OPENAI_API_KEY is missing. Add it to .env before running this agent."
+        if not self.client:
+            return self._fallback_route(user_message)
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},

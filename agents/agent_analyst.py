@@ -6,17 +6,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict
 
-from dotenv import load_dotenv
-from openai import OpenAI
-
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from agents.openai_compat import build_openai_client
 from agents.schemas import VisualizationSchema
 from tools.visualization import generate_treemap_report, generate_univariate_report
 
@@ -41,7 +36,7 @@ class AnalystAgent:
 
     def __init__(self, model: str = "gpt-5.3-codex") -> None:
         self.model = model
-        self.client: OpenAI = client
+        self.client = build_openai_client()
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "generate_univariate_report": generate_univariate_report,
@@ -86,10 +81,27 @@ class AnalystAgent:
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             return json.dumps({"error": f"{tool_name} failed: {str(exc)}"}, indent=2)
 
+    def _fallback_route(self, user_message: str) -> str:
+        """Deterministic fallback when no API key is configured."""
+        msg = user_message.lower()
+        metric = "count" if "count" in msg else "amount"
+        data_path = "data/output/sweep_summary.csv"
+
+        if "treemap" in msg or "heatmap" in msg:
+            try:
+                return generate_treemap_report(data_path=data_path, metric=metric)
+            except Exception as exc:
+                return f"Unable to generate treemap report: {exc}"
+
+        try:
+            return generate_univariate_report(data_path=data_path, metric=metric)
+        except Exception as exc:
+            return f"Unable to generate univariate report: {exc}"
+
     def run(self, user_message: str) -> str:
         """Handle visualization requests using OpenAI tool calling."""
-        if not os.getenv("OPENAI_API_KEY"):
-            return "OPENAI_API_KEY is missing. Add it to .env before running this agent."
+        if not self.client:
+            return self._fallback_route(user_message)
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -105,8 +117,8 @@ class AnalystAgent:
                     tool_choice="auto",
                 )
             except Exception as exc:
-                # If network/proxy blocks OpenAI, surface a clear diagnostic.
-                return f"Unable to contact OpenAI API for visualization: {exc}"
+                # Keep deterministic local usability when network/proxy is unavailable.
+                return self._fallback_route(user_message)
 
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []
@@ -145,4 +157,3 @@ if __name__ == "__main__":
 
     print("=== AnalystAgent Visualization Test ===")
     print(agent.run(msg))
-

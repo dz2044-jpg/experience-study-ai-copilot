@@ -7,17 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from dotenv import load_dotenv
-from openai import OpenAI
-
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from agents.openai_compat import build_openai_client
 from agents.schemas import DimensionalSweepSchema
 from tools.insight_engine import run_dimensional_sweep
 
@@ -64,7 +59,7 @@ class ActuaryAgent:
 
     def __init__(self, model: str = "gpt-5.4") -> None:
         self.model = model
-        self.client: OpenAI = client
+        self.client = build_openai_client()
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "run_dimensional_sweep": run_dimensional_sweep,
@@ -151,6 +146,18 @@ class ActuaryAgent:
                 "High-level 1-way sweep complete (Face Amount focus).",
             )
 
+        if "1-way" in msg or "most adverse cohort" in msg or "rank cohorts by ae_ratio_amount" in msg:
+            sweep = run_dimensional_sweep(
+                depth=1,
+                min_mac=1,
+                top_n=5,
+                sort_by="AE_Ratio_Amount",
+            )
+            return self._summarize_sweep(
+                sweep,
+                "High-level 1-way sweep complete on the prepared analysis dataset.",
+            )
+
         if "2-way" in msg or "min_mac=2" in msg or "intersections" in msg:
             min_mac = 2
             min_match = re.search(r"min_mac\s*=\s*(\d+)", msg)
@@ -174,8 +181,8 @@ class ActuaryAgent:
 
     def run(self, user_message: str) -> str:
         """Handle message with OpenAI tool-calling."""
-        if not os.getenv("OPENAI_API_KEY"):
-            return "OPENAI_API_KEY is missing. Add it to .env before running this agent."
+        if not self.client:
+            return self._fallback_route(user_message)
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},

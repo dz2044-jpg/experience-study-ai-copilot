@@ -16,6 +16,8 @@ import pandas as pd
 _SESSION_START_TIME = time.time()
 
 ANALYSIS_OUTPUT_PATH = "data/output/analysis_inforce.csv"
+ACTUARIAL_NUMERICS = ["MAC", "MEC", "MAF", "MEF", "MOC"]
+RAW_MISSING_TOKENS = {"", "na", "nan", "null", "none", "n/a"}
 
 
 def _load_inforce(path: str) -> pd.DataFrame:
@@ -23,7 +25,6 @@ def _load_inforce(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
 
     # Enforce absolute numeric types for core actuarial columns.
-    ACTUARIAL_NUMERICS = ["MAC", "MEC", "MAF", "MEF", "MOC"]
     for col in ACTUARIAL_NUMERICS:
         if col in df.columns:
             # Force to float64 to ensure downstream A/E math doesn't fail on categorical/int boundaries.
@@ -43,6 +44,28 @@ def _load_feature_engineering_frame(source_path: str, output_path: str) -> pd.Da
     if os.path.exists(output_path) and os.path.getmtime(output_path) >= _SESSION_START_TIME:
         return _load_inforce(output_path)
     return _load_inforce(source_path)
+
+
+def _find_raw_non_numeric_values(data_path: str) -> list[str]:
+    """Identify raw source values in actuarial numeric columns that cannot be parsed as numbers."""
+    raw_df = pd.read_csv(data_path, dtype=str, keep_default_na=False)
+    issues: list[str] = []
+
+    for col in ACTUARIAL_NUMERICS:
+        if col not in raw_df.columns:
+            continue
+
+        raw_values = raw_df[col].fillna("").astype(str).str.strip()
+        missing_mask = raw_values.str.lower().isin(RAW_MISSING_TOKENS)
+        parsed_values = pd.to_numeric(raw_values.where(~missing_mask, pd.NA), errors="coerce")
+        invalid_count = int((~missing_mask & parsed_values.isna()).sum())
+
+        if invalid_count > 0:
+            issues.append(
+                f"{col} contains {invalid_count} non-numeric raw value(s) that cannot be parsed."
+            )
+
+    return issues
 
 
 def profile_dataset(data_path: str = "data/input/synthetic_inforce.csv") -> str:
@@ -93,8 +116,8 @@ def run_actuarial_data_checks(data_path: str = "data/input/synthetic_inforce.csv
             indent=2,
         )
 
+    issues = _find_raw_non_numeric_values(data_path)
     df = _load_inforce(data_path)
-    issues: list[str] = []
 
     # --- Type checks ---
     if "Policy_Number" in df.columns:

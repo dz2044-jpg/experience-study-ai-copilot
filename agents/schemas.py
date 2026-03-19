@@ -58,6 +58,31 @@ class CategoricalBandingSchema(FeatureEngineeringSchema):
     """Alias schema used by steward tool-calling for categorical banding/regrouping."""
 
 
+class RegroupCategoricalSchema(BaseModel):
+    """Schema for regrouping categorical values into a derived feature."""
+
+    data_path: str = Field(
+        default="data/input/synthetic_inforce.csv",
+        description="Source CSV path for regrouping (alias of source_path).",
+    )
+    source_column: str = Field(
+        ...,
+        description="Categorical column name to regroup (for example Risk_Class).",
+    )
+    mapping_dict: Dict[str, Any] = Field(
+        ...,
+        description="Mapping dictionary used to regroup source values into broader categories.",
+    )
+    source_path: str = Field(
+        default="data/input/synthetic_inforce.csv",
+        description="Input CSV path for regrouping.",
+    )
+    output_path: str = Field(
+        default="data/output/analysis_inforce.csv",
+        description="Output CSV path to save transformed data.",
+    )
+
+
 class DimensionalSweepSchema(BaseModel):
     """Schema for actuarial dimensional sweep and Bayesian A/E outputs."""
 
@@ -103,6 +128,12 @@ class DimensionalSweepSchema(BaseModel):
             "Pandas query filters applied before aggregation (e.g., [\"Gender == 'F'\", \"Smoker == 'No'\"]). "
             "The tool returns JSON objects where each object represents one cohort with "
             "Dimensions, actual/expected counts and amounts, A/E ratios, and 95% credible interval bounds."
+        ),
+    )
+    selected_columns: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Optional list of dimension columns to sweep. When omitted, the tool auto-detects eligible dimensions."
         ),
     )
     data_path: str = Field(

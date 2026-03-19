@@ -11,7 +11,6 @@ from itertools import combinations
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -81,6 +80,17 @@ def compute_ae_ci_amount(
     Uses hybrid avg_claim: if mac > 0 use actual_amount/mac; else use expected_amount/mec.
     Returns (ae_lower, ae_upper).
     """
+    if (
+        pd.isna(mac)
+        or pd.isna(moc)
+        or pd.isna(mec)
+        or pd.isna(actual_amount)
+        or pd.isna(expected_amount)
+        or mec <= 0
+        or expected_amount <= 0
+    ):
+        return (None, None)
+
     if mac > 0:
         avg_claim = actual_amount / mac
     else:
@@ -88,7 +98,7 @@ def compute_ae_ci_amount(
 
     rate_lower, rate_upper = _compute_mortality_rate_ci(mac, moc, confidence_level)
 
-    if rate_lower is None or rate_upper is None or expected_amount <= 0:
+    if rate_lower is None or rate_upper is None:
         return (None, None)
 
     credible_amount_lower = rate_lower * moc * avg_claim

@@ -53,3 +53,16 @@ def test_session_aware_feature_engineering_appends_columns(tmp_path, monkeypatch
     assert "Face_Amount_band" in df.columns
     assert "Issue_Age_band" in df.columns
     assert "Risk_Class_regrouped" in df.columns
+
+
+def test_run_actuarial_data_checks_flags_non_numeric_raw_actuarial_values(tmp_path):
+    source = tmp_path / "bad_inforce.csv"
+    source.write_text(
+        "Policy_Number,Duration,MAC,MEC,MOC,Face_Amount,Issue_Age,MEF,MAF,COLA\n"
+        "P1,1,foo,0.5,1.0,100000,35,1000,0,\n"
+    )
+
+    result = data_steward.run_actuarial_data_checks(str(source))
+
+    assert '"status": "FAIL"' in result
+    assert "MAC contains 1 non-numeric raw value" in result

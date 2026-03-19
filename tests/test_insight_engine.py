@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from tools.insight_engine import run_dimensional_sweep
+from tools.insight_engine import compute_ae_ci_amount, run_dimensional_sweep
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "dummy_inforce.csv"
@@ -57,3 +57,7 @@ def test_pairwise_combinatorial_sweep_generates_all_requested_pairs(tmp_path, mo
     assert "AE_Count_CI_Upper" in df.columns
     assert "AE_Amount_CI_Lower" in df.columns
     assert "AE_Amount_CI_Upper" in df.columns
+
+
+def test_compute_ae_ci_amount_returns_none_for_zero_denominators():
+    assert compute_ae_ci_amount(0, 1, 0, 0, 0) == (None, None)

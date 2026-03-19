@@ -58,17 +58,19 @@ experience-study-ai-copilot/
 │   ├── agent_steward.py        # Data Steward agent (profiling/validation/banding)
 │   ├── agent_actuary.py        # Lead Actuary agent (A/E sweep interpretation)
 │   ├── agent_analyst.py        # Data Analyst agent (visualization & reporting)
-│   └── orchestrator.py         # Supervisor that routes DATA_PREP / ANALYSIS / VISUALIZE / BOTH
+│   └── orchestrator.py         # Supervisor that routes GENERAL / DATA_PREP / ANALYSIS / VISUALIZE / CONTINUE
 ├── data/
-│   ├── synthetic_inforce.csv   # synthetic actuarial dataset (raw inforce)
-│   ├── analysis_inforce.csv    # engineered dataset used for actuarial sweeps
-│   └── sweep_summary.csv       # aggregated cohort-level A/E summary used for visualization
+│   ├── input/
+│   │   └── synthetic_inforce.csv   # synthetic actuarial dataset (raw inforce)
+│   └── output/
+│       ├── analysis_inforce.csv    # engineered dataset used for actuarial sweeps
+│       └── sweep_summary.csv       # latest aggregated A/E summary used for visualization
 ├── tools/
 │   ├── data_steward.py         # data validation + feature engineering
 │   ├── insight_engine.py       # actuarial sweep engine + Bayesian A/E math core
 │   └── visualization.py        # Plotly-based scatter/treemap visualization utilities
 ├── chat.py                     # terminal copilot entrypoint
-├── main.py                     # current (Streamlit) app/entry script
+├── main.py                     # thin Streamlit shell around the orchestrator
 ├── pyproject.toml
 ├── uv.lock
 └── README.md
@@ -77,15 +79,15 @@ experience-study-ai-copilot/
 ### Tool Roles
 
 - **`tools/data_steward.py` — Sanitizer/Engineer**
-  - Profiles raw inforce data (by default `data/synthetic_inforce.csv`)
+  - Profiles raw inforce data (by default `data/input/synthetic_inforce.csv`)
   - Runs actuarial validation checks (types, value ranges, logic checks)
   - Creates categorical bands and regrouped features
-  - Writes transformed output to `data/analysis_inforce.csv` (never overwriting raw source input)
+  - Writes transformed output to `data/output/analysis_inforce.csv` (never overwriting raw source input)
 
 - **`tools/insight_engine.py` — Actuarial Math Core**
   - Computes Bayesian mortality-rate credible intervals
   - Computes A/E confidence intervals (count and amount)
-  - Executes dimensional sweeps across cohort intersections using the processed dataset (`data/analysis_inforce.csv`)
+  - Executes dimensional sweeps across cohort intersections using the processed dataset (`data/output/analysis_inforce.csv`)
   - Returns structured JSON for downstream agent interpretation and UI rendering
 
 ### Agent Roles
@@ -94,7 +96,7 @@ experience-study-ai-copilot/
   - Uses schema-driven tool calling for:
     - dataset profiling
     - actuarial data checks (including MOC integrity)
-    - categorical banding for engineered analysis features
+    - categorical banding and regrouping for engineered analysis features
   - Confirms applied transformations and output paths
 
 - **`agents/agent_actuary.py` — Lead Actuary Agent**
@@ -105,16 +107,17 @@ experience-study-ai-copilot/
 - **`agents/agent_analyst.py` — Data Analyst Agent**
   - Uses `VisualizationSchema` with `chart_type` and `metric` to choose tools
   - Calls `generate_univariate_report` (scatter + table) or `generate_treemap_report`
-  - Always reads from the aggregated sweep file (`data/sweep_summary.csv`) rather than raw inforce data
+  - Always reads from the aggregated sweep file (`data/output/sweep_summary.csv`) rather than raw inforce data
   - Returns concise confirmations that charts were generated and opened
 
 - **`agents/orchestrator.py` — Study Supervisor**
   - Classifies requests into:
+    - `GENERAL`
     - `DATA_PREP`
     - `ANALYSIS`
     - `VISUALIZE`
-    - `BOTH` (sequential handoff)
-  - Routes to the Steward, Actuary, Analyst, or a Steward→Actuary pipeline
+    - `CONTINUE` (follow-on handoff)
+  - Routes to the Steward, Actuary, Analyst, or the next queued specialist step
   - Returns a consolidated natural-language response where appropriate
 
 ---
@@ -165,13 +168,7 @@ uv sync
 
 ### 2) Run Streamlit app
 
-If your app entrypoint is `app.py`:
-
-```bash
-uv run streamlit run app.py
-```
-
-If your current entrypoint is `main.py` (as in this repository state):
+The current repository entrypoint is `main.py`:
 
 ```bash
 uv run streamlit run main.py
@@ -236,4 +233,3 @@ Typical sweep payload shape:
 ```
 
 This contract is defined in `agents/schemas.py` and consumed by AI agents for deterministic, auditable analysis workflows.
-
