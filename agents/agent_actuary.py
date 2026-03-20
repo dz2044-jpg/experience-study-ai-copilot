@@ -189,6 +189,12 @@ class ActuaryAgent:
         depth_match = re.search(r"\b([123])[- ]way\b", msg)
         if depth_match:
             return int(depth_match.group(1))
+        dimensional_match = re.search(r"\b([123])[- ]dimensional\b", msg)
+        if dimensional_match:
+            return int(dimensional_match.group(1))
+        word_dimensional_match = re.search(r"\b(one|two|three)[- ]dimensional\b", msg)
+        if word_dimensional_match:
+            return {"one": 1, "two": 2, "three": 3}[word_dimensional_match.group(1)]
         if "pairwise" in msg or "all pairs" in msg:
             return 2
         return 1
