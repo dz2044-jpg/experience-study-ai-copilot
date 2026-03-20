@@ -574,6 +574,53 @@
       color: var(--muted);
     }
 
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .chip {
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(20, 107, 117, 0.08);
+      color: var(--ink);
+      font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+      font-size: 0.8rem;
+    }
+
+    .route-grid,
+    .agent-map {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .route-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .agent-map {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .route-pill,
+    .agent-card {
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+    }
+
+    .route-pill strong,
+    .agent-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 1rem;
+    }
+
     .footer-note {
       font-size: 0.9rem;
       color: var(--muted);
@@ -591,7 +638,8 @@
       .artifact-grid,
       .test-grid,
       .roadmap-grid,
-      .flow-track {
+      .flow-track,
+      .route-grid {
         grid-template-columns: 1fr 1fr;
       }
 
@@ -629,7 +677,9 @@
       .test-grid,
       .roadmap-grid,
       .flow-track,
-      .pillars {
+      .pillars,
+      .route-grid,
+      .agent-map {
         grid-template-columns: 1fr;
       }
 
@@ -665,48 +715,48 @@
       <section class="slide active" data-title="Problem & Audience">
         <div class="left">
           <div class="kicker">Slide 1</div>
-          <h1>Documentation is now part of the product.</h1>
+          <h1>This is not a chatbot. It is an orchestration engine.</h1>
           <div class="accent-line"></div>
           <p>
-            Experience-study systems have two jobs: get the actuarial math right and make the operating model understandable to the people who have to trust it.
+            The presentation now leads with the software architecture: a supervisor, three specialist agents, schema-bound tool calls, and deterministic Python tools that own every quantitative output.
           </p>
           <p>
-            This repo sits at that intersection. It gives developers and actuaries a deterministic analysis engine, while giving broader stakeholders a visible, reviewable multi-agent workflow.
+            That matters because technical stakeholders do not need another generic “AI can help” pitch. They need to see where routing happens, where tool permissions live, and where the actuarial math is actually computed.
           </p>
           <div class="hero-grid">
             <div class="stat">
-              <span class="label">Primary Users</span>
-              <strong>Actuaries</strong>
-              Validate rules, review A/E outputs, and inspect cohort behavior.
+              <span class="label">Control Plane</span>
+              <strong>1 Orchestrator</strong>
+              Classifies intent, tracks continuation state, and decides which specialist should act next.
             </div>
             <div class="stat">
-              <span class="label">Technical Users</span>
-              <strong>Data Scientists</strong>
-              Audit the workflow, engineer features, and evaluate system boundaries.
+              <span class="label">Execution Layer</span>
+              <strong>3 Specialist Agents</strong>
+              Steward, Actuary, and Analyst each own a narrow responsibility boundary.
             </div>
             <div class="stat">
-              <span class="label">Review Audience</span>
-              <strong>Stakeholders</strong>
-              Understand why this is safe, useful, and operationally credible.
+              <span class="label">Deterministic Core</span>
+              <strong>7 Key Modules</strong>
+              The tools and schemas on disk define what the agents are allowed to do.
             </div>
           </div>
         </div>
         <div class="right">
           <div class="diagram">
-            <div class="diagram-title">The communication challenge</div>
+            <div class="diagram-title">Architecture at a glance</div>
             <div class="card-grid two">
               <div class="card">
-                <h3>Without documentation</h3>
-                <p>People see “AI agents” and assume the model is doing the math.</p>
+                <h3>Orchestrator</h3>
+                <p><code>agents/orchestrator.py</code> routes <code>DATA_PREP</code>, <code>ANALYSIS</code>, <code>VISUALIZE</code>, and <code>CONTINUE</code>.</p>
               </div>
               <div class="card">
-                <h3>With clear documentation</h3>
-                <p>People can trace where deterministic tooling ends and conversational orchestration begins.</p>
+                <h3>Tool contracts</h3>
+                <p><code>agents/schemas.py</code> constrains the arguments each specialist can pass into deterministic tools.</p>
               </div>
             </div>
             <div class="note" style="margin-top: 14px;">
-              <span class="label">Repo reality</span>
-              <p>The current codebase already separates deterministic tools, specialist agents, and orchestrated handoffs. The documentation refresh makes that visible.</p>
+              <span class="label">Key technical claim</span>
+              <p>The system is useful because it makes the LLM operationally narrow and makes the deterministic layer operationally visible.</p>
             </div>
             <div class="code-sample">
 <span class="muted">Key modules</span>
@@ -725,42 +775,64 @@ tools/visualization.py
       <section class="slide" data-title="Why Multi-Agent">
         <div class="left">
           <div class="kicker">Slide 2</div>
-          <h2>Why experience-study work benefits from a multi-agent copilot</h2>
+          <h2>The orchestrator is the system boundary, not a convenience wrapper.</h2>
           <p>
-            The workflow is naturally segmented. Data prep, actuarial analysis, and visualization each have different rules, different failure modes, and different acceptable outputs.
+            The supervisor is where the product behaves like an engine rather than a chat session. It classifies intent, stores pending next steps, and routes follow-up confirmations without losing workflow state.
           </p>
-          <ul>
-            <li>A single general assistant tends to blur responsibility boundaries.</li>
-            <li>Specialist agents can be instructed narrowly and backed by explicit tool schemas.</li>
-            <li>The orchestrator can preserve user control by pausing between major stages.</li>
-          </ul>
-        </div>
-        <div class="right">
-          <div class="card-grid two">
-            <div class="card">
-              <span class="label">Data Steward</span>
-              <h3>Input trust</h3>
-              <p>Profiles datasets, validates actuarial rules, engineers features, and writes the analysis-ready dataset.</p>
+          <div class="route-grid">
+            <div class="route-pill">
+              <strong>GENERAL</strong>
+              Non-execution guidance and fallback help.
             </div>
-            <div class="card">
-              <span class="label">Lead Actuary</span>
-              <h3>Math trust</h3>
-              <p>Runs deterministic dimensional sweeps and interprets A/E count and amount outputs cautiously.</p>
+            <div class="route-pill">
+              <strong>DATA_PREP</strong>
+              Routes into the Data Steward.
             </div>
-            <div class="card">
-              <span class="label">Data Analyst</span>
-              <h3>Communication trust</h3>
-              <p>Generates chart artifacts from aggregated sweep outputs rather than from raw source data.</p>
+            <div class="route-pill">
+              <strong>ANALYSIS</strong>
+              Routes into the Lead Actuary.
             </div>
-            <div class="card">
-              <span class="label">Orchestrator</span>
-              <h3>Workflow trust</h3>
-              <p>Routes intent and continuation prompts without silently chaining through the entire pipeline.</p>
+            <div class="route-pill">
+              <strong>VISUALIZE</strong>
+              Routes into the Analyst.
+            </div>
+            <div class="route-pill">
+              <strong>CONTINUE</strong>
+              Advances the queued next step.
             </div>
           </div>
-          <div class="note" style="margin-top: 14px;">
-            <span class="label">Test-backed behavior</span>
-            <p>The repo’s tests explicitly cover continuation routing, artifact creation, missing-feature guidance, and visualization dependency on fresh sweep outputs.</p>
+          <div class="chip-list">
+            <span class="chip">last_active_agent</span>
+            <span class="chip">pending_analysis_prompt</span>
+            <span class="chip">pending_visualization_prompt</span>
+            <span class="chip">latest_analysis_output_path</span>
+          </div>
+        </div>
+        <div class="right">
+          <div class="diagram">
+            <div class="diagram-title">What makes it an engine</div>
+            <div class="card-grid two">
+              <div class="card">
+                <span class="label">Input</span>
+                <h3>User intent</h3>
+                <p>The orchestrator receives natural language, but converts it into a single execution path.</p>
+              </div>
+              <div class="card">
+                <span class="label">Output</span>
+                <h3>Queued next step</h3>
+                <p>It pauses after major stages and stores what should happen next if the user says “continue”.</p>
+              </div>
+            </div>
+            <div class="code-sample">
+if intent == "DATA_PREP":
+    return self._route_to_steward(user_query)
+if intent == "ANALYSIS":
+    return self._route_to_actuary(user_query)
+if intent == "VISUALIZE":
+    return self._route_to_analyst(user_query)
+if intent == "CONTINUE":
+    return self._handle_continue()
+            </div>
           </div>
         </div>
       </section>
@@ -768,44 +840,54 @@ tools/visualization.py
       <section class="slide" data-title="Muscles & Brains">
         <div class="full">
           <div class="kicker">Slide 3</div>
-          <h2>“Muscles and Brains” is the architecture, not just the tagline.</h2>
+          <h2>Each specialist agent owns a narrow slice of the workflow.</h2>
           <p>
-            The point is to keep the system conversational without letting the model become the source of numerical truth.
+            The multi-agent design works because the agents are constrained by role and by tool surface. Each one can do only a small number of things, and those things map directly to files in the repo.
           </p>
-          <div class="pillars">
-            <div class="pillar muscles">
-              <div class="badge">Muscles: deterministic tools</div>
-              <h3 style="margin-top: 16px;">Repeatable computation and artifact generation</h3>
-              <ul>
-                <li><code>tools/data_steward.py</code> handles profiling, validation, and feature engineering.</li>
-                <li><code>tools/insight_engine.py</code> performs A/E sweeps and Bayesian interval math.</li>
-                <li><code>tools/visualization.py</code> writes standalone HTML reports.</li>
-                <li>Outputs land on disk as explicit handoff artifacts.</li>
-              </ul>
+          <div class="agent-map">
+            <div class="agent-card">
+              <span class="label">Data Steward Agent</span>
+              <strong>Input trust and feature engineering</strong>
+              <p>Reads source data, profiles structure, validates actuarial data quality, and writes the prepared analysis dataset.</p>
+              <div class="chip-list">
+                <span class="chip">profile_dataset</span>
+                <span class="chip">run_actuarial_data_checks</span>
+                <span class="chip">create_categorical_bands</span>
+                <span class="chip">regroup_categorical_features</span>
+              </div>
             </div>
-            <div class="pillar brains">
-              <div class="badge">Brains: agents + orchestrator</div>
-              <h3 style="margin-top: 16px;">Routing, tool selection, and explanation</h3>
-              <ul>
-                <li>Schema-bound tool calling is defined in <code>agents/schemas.py</code>.</li>
-                <li>Agents explain results, enforce role boundaries, and refuse inappropriate cross-role work.</li>
-                <li>The orchestrator classifies <code>DATA_PREP</code>, <code>ANALYSIS</code>, <code>VISUALIZE</code>, and <code>CONTINUE</code>.</li>
-                <li>The LLM remains a coordinator, not an actuarial calculator.</li>
-              </ul>
+            <div class="agent-card">
+              <span class="label">Lead Actuary Agent</span>
+              <strong>Dimensional analysis and ranked interpretation</strong>
+              <p>Calls the sweep engine, compares count and amount A/E, and summarizes the top-ranked cohorts without performing arithmetic itself.</p>
+              <div class="chip-list">
+                <span class="chip">run_dimensional_sweep</span>
+                <span class="chip">selected_columns</span>
+                <span class="chip">top_n</span>
+                <span class="chip">sort_by</span>
+              </div>
             </div>
-          </div>
-          <div class="card-grid three" style="margin-top: 18px;">
-            <div class="card">
-              <span class="label">What changes with AI</span>
-              <p>Interface flexibility, step selection, and user-facing explanations.</p>
+            <div class="agent-card">
+              <span class="label">Analyst Agent</span>
+              <strong>Visualization and communication layer</strong>
+              <p>Reads sweep summaries and generates browser artifacts. It never visualizes raw inforce data directly.</p>
+              <div class="chip-list">
+                <span class="chip">generate_univariate_report</span>
+                <span class="chip">generate_treemap_report</span>
+                <span class="chip">metric=count|amount</span>
+              </div>
             </div>
-            <div class="card">
-              <span class="label">What does not change</span>
-              <p>Validation rules, formulas, aggregation logic, and artifact formats.</p>
-            </div>
-            <div class="card">
-              <span class="label">Why it matters</span>
-              <p>Trust improves when the model can be useful without being authoritative about the math.</p>
+            <div class="agent-card">
+              <span class="label">Study Orchestrator</span>
+              <strong>Session state and handoff logic</strong>
+              <p>Preserves workflow continuity, owns pending follow-up prompts, and decides which specialist gets the next turn.</p>
+              <div class="chip-list">
+                <span class="chip">_classify_intent</span>
+                <span class="chip">_handle_continue</span>
+                <span class="chip">_route_to_steward</span>
+                <span class="chip">_route_to_actuary</span>
+                <span class="chip">_route_to_analyst</span>
+              </div>
             </div>
           </div>
         </div>
@@ -814,90 +896,90 @@ tools/visualization.py
       <section class="slide" data-title="Workflow Handoff">
         <div class="full">
           <div class="kicker">Slide 4</div>
-          <h2>The workflow is staged, artifact-driven, and continuation-aware.</h2>
+          <h2>Tooling is explicit: agents call a constrained set of deterministic functions.</h2>
           <div class="flow-track">
             <div class="flow-step">
               <div class="step-num">1</div>
-              <span class="label">Orchestrator</span>
-              <h3>Classify intent</h3>
-              <p>Routes requests into general help, data prep, analysis, visualization, or continuation.</p>
-              <p class="small">Key idea: do the first logical step, not the whole chain.</p>
+              <span class="label">Schemas</span>
+              <h3>Pydantic defines the call contract</h3>
+              <p><code>ProfileDatasetSchema</code>, <code>DimensionalSweepSchema</code>, and <code>VisualizationSchema</code> become OpenAI tool specs.</p>
             </div>
             <div class="flow-step">
               <div class="step-num">2</div>
-              <span class="label">Data Steward</span>
-              <h3>Prepare the analysis dataset</h3>
-              <p>Profiles, validates, and engineers features into <code>data/output/analysis_inforce.csv</code>.</p>
-              <p class="small">Input files remain immutable.</p>
+              <span class="label">Handlers</span>
+              <h3>Agents map tool names to local functions</h3>
+              <p>Each agent has a small <code>tool_handlers</code> dictionary rather than broad code execution freedom.</p>
             </div>
             <div class="flow-step">
               <div class="step-num">3</div>
-              <span class="label">Lead Actuary</span>
-              <h3>Run the deterministic sweep</h3>
-              <p>Ranks cohorts and writes a run-specific CSV plus the latest alias <code>sweep_summary.csv</code>.</p>
-              <p class="small">The agent interprets; the tool computes.</p>
+              <span class="label">Execution</span>
+              <h3>Python tools own computation and file writes</h3>
+              <p>The actual work is done in <code>tools/</code>, and the results are written to predictable artifacts.</p>
             </div>
             <div class="flow-step">
               <div class="step-num">4</div>
-              <span class="label">Data Analyst</span>
-              <h3>Generate the browser report</h3>
-              <p>Creates scatter or treemap HTML from the latest sweep artifact.</p>
-              <p class="small">No fresh artifact, no fake success.</p>
+              <span class="label">Narration</span>
+              <h3>Agents convert tool output into operator language</h3>
+              <p>The model explains what happened, but it does not become the source of truth.</p>
             </div>
           </div>
-          <div class="note" style="margin-top: 18px;">
-            <span class="label">Continuation behavior</span>
-            <p>
-              After data prep, <code>continue</code> queues the actuarial step. After analysis, <code>continue</code> queues visualization. This keeps the user in control while still preserving momentum.
-            </p>
-          </div>
+          <div class="code-sample">DataStewardAgent
+  -> profile_dataset
+  -> run_actuarial_data_checks
+  -> create_categorical_bands
+  -> regroup_categorical_features
+
+ActuaryAgent
+  -> run_dimensional_sweep
+
+AnalystAgent
+  -> generate_univariate_report
+  -> generate_treemap_report</div>
         </div>
       </section>
 
       <section class="slide" data-title="Trust Guardrails">
         <div class="left">
           <div class="kicker">Slide 5</div>
-          <h2>Deterministic math is the trust boundary.</h2>
+          <h2>The deterministic tool layer is where the hard guarantees live.</h2>
           <p>
-            The repo’s actuarial credibility comes from where calculations live and from the rules that prevent the LLM from crossing that line.
+            Once the architecture is visible, the important question becomes: what can each tool actually do, and what does the system guarantee about those outputs?
           </p>
           <div class="trust-stack">
             <div class="guardrail">
-              <span class="label">MOC integrity</span>
-              <p><code>0 &lt; MOC &lt;= 1.0</code>, and if <code>MAC == 1</code>, then <code>MOC == 1.0</code>.</p>
+              <span class="label">Data Steward tool</span>
+              <p>Profiles types, validates MAC/MEC/MOC and COLA logic, and writes <code>analysis_inforce.csv</code> without overwriting raw input.</p>
             </div>
             <div class="guardrail">
-              <span class="label">Jeffreys prior</span>
-              <p>Credibility intervals use a Beta posterior with <code>Beta(0.5, 0.5)</code> prior parameters.</p>
+              <span class="label">Insight Engine tool</span>
+              <p>Computes dimensional sweeps, A/E ratios, and Bayesian confidence intervals with deterministic Python and SciPy.</p>
             </div>
             <div class="guardrail">
-              <span class="label">Amount fallback</span>
-              <p>Zero-claim cohorts fall back from <code>MAF / MAC</code> to <code>MEF / MEC</code> to keep amount bounds usable.</p>
+              <span class="label">Visualization tool</span>
+              <p>Reads aggregated sweep outputs and writes standalone HTML artifacts rather than improvising charts from arbitrary input.</p>
             </div>
             <div class="guardrail">
-              <span class="label">No LLM arithmetic</span>
-              <p>Agents are instructed to read tool outputs from disk and explain them, not derive them.</p>
+              <span class="label">Agent boundary</span>
+              <p>The LLM chooses, invokes, and summarizes tools. It does not invent formulas, alter source truth, or compute actuarial metrics itself.</p>
             </div>
           </div>
         </div>
         <div class="right">
           <div class="diagram">
-            <div class="diagram-title">Small sample of the deterministic contract</div>
-            <div class="code-sample">{
-  "Dimensions": "Gender=F | Smoker=Yes",
-  "Sum_MAC": 9,
-  "Sum_MOC": 71.45,
-  "Sum_MEC": 3.75,
-  "AE_Ratio_Count": 2.4,
-  "AE_Ratio_Amount": 1.8,
-  "AE_Count_CI_Lower": 1.1,
-  "AE_Count_CI_Upper": 3.6,
-  "AE_Amount_CI_Lower": 0.9,
-  "AE_Amount_CI_Upper": 2.7
-}</div>
+            <div class="diagram-title">Repo-level guarantees already encoded in tools</div>
+            <div class="code-sample">MOC rules
+  0 < MOC <= 1.0
+  MAC == 1  =>  MOC == 1.0
+
+Bayesian credibility
+  prior = Beta(0.5, 0.5)
+
+Amount fallback
+  if MAC > 0: avg_claim = MAF / MAC
+  else:       avg_claim = MEF / MEC</div>
             <div class="mini-panel" style="margin-top: 14px;">
-              <span class="label">Interpretation model</span>
-              <p>The human-readable narrative can vary. The quantitative payload cannot.</p>
+              <span class="label">Technical meaning</span>
+              <p>These are engineering constraints implemented in Python, not presentation claims layered on top of a generic assistant.</p>
             </div>
           </div>
         </div>
@@ -906,40 +988,48 @@ tools/visualization.py
       <section class="slide" data-title="Artifact Flow">
         <div class="left">
           <div class="kicker">Slide 6</div>
-          <h2>Artifacts make the workflow inspectable.</h2>
+          <h2>Artifacts are how the agent architecture stays inspectable.</h2>
           <p>
-            Each stage leaves behind a file that the next stage consumes. That makes the pipeline debuggable, reviewable, and easy to explain.
+            The most useful architectural detail for technical reviewers is that handoffs do not live only in memory. They land on disk as concrete files that the next agent consumes.
           </p>
           <div class="artifact-grid">
             <div class="artifact">
-              <span class="label">Prepared dataset</span>
+              <span class="label">Steward output</span>
               <strong>analysis_inforce.csv</strong>
-              Steward output used as the source of truth for dimensional sweeps.
+              Prepared dataset used by the actuary tool layer as the analysis source of truth.
             </div>
             <div class="artifact">
-              <span class="label">Latest sweep</span>
+              <span class="label">Actuary output</span>
               <strong>sweep_summary.csv</strong>
-              Ranked cohort output with flattened CI columns for downstream charts.
+              Ranked cohort results plus flattened CI columns required by visualization.
             </div>
             <div class="artifact">
-              <span class="label">Browser output</span>
+              <span class="label">Analyst output</span>
               <strong>HTML reports</strong>
-              Standalone visualization files created from the latest aggregated artifact.
+              Browser-openable reports created from the latest sweep artifact, not from raw input.
             </div>
           </div>
         </div>
         <div class="right">
           <div class="diagram">
-            <div class="diagram-title">Representative files in <code>data/output/</code></div>
+            <div class="diagram-title">Agent-to-agent handoff on disk</div>
             <div class="code-sample">analysis_inforce.csv
+  produced by DataStewardAgent tools
+
 sweep_summary.csv
+  produced by ActuaryAgent tools
+
 sweep_summary_1_gender_smoker.csv
+  run-specific actuarial artifact
+
 temp_univariate_report.html
+  produced by AnalystAgent tools
+
 temp_treemap_report.html
 temp_treemap_source_gender_smoker.csv</div>
             <div class="mini-panel" style="margin-top: 14px;">
-              <span class="label">Operational benefit</span>
-              <p>When something fails, teams can inspect the exact handoff artifact instead of reverse-engineering agent state.</p>
+              <span class="label">Engineering benefit</span>
+              <p>When a step misbehaves, reviewers can inspect the exact artifact that crossed the boundary instead of reverse-engineering hidden model state.</p>
             </div>
           </div>
         </div>
@@ -948,25 +1038,25 @@ temp_treemap_source_gender_smoker.csv</div>
       <section class="slide" data-title="Tests & UAT">
         <div class="full">
           <div class="kicker">Slide 7</div>
-          <h2>Tests and UAT validate the boundaries that matter.</h2>
+          <h2>Tests and UAT validate the agent boundaries, not just the outputs.</h2>
           <p>
-            The current repo behavior is not just described in prose. It is reinforced by automated tests and a manual UAT checklist.
+            The strongest technical argument for this design is that the orchestration behavior is testable. The repo verifies routing decisions, artifact creation, and role discipline directly.
           </p>
           <div class="test-grid">
             <div class="card">
-              <span class="label">Routing</span>
-              <h3>Continuation and handoffs</h3>
-              <p>Tests verify that the orchestrator routes from steward to actuary to analyst instead of collapsing everything into one opaque step.</p>
+              <span class="label">Orchestrator</span>
+              <h3>Continuation and pending state</h3>
+              <p>Tests verify that follow-up prompts advance through the staged workflow rather than being treated as generic chat replies.</p>
             </div>
             <div class="card">
-              <span class="label">Artifacts</span>
-              <h3>Deterministic files on disk</h3>
-              <p>Tests confirm that sweep runs persist ranked CSV outputs and maintain a latest alias for visualization.</p>
+              <span class="label">Actuary Tooling</span>
+              <h3>Deterministic sweep artifacts</h3>
+              <p>Tests confirm that ranked CSVs are persisted, latest aliases are maintained, and CI columns are present for downstream tools.</p>
             </div>
             <div class="card">
-              <span class="label">Guardrails</span>
+              <span class="label">Agent Contracts</span>
               <h3>Role and data-source discipline</h3>
-              <p>Tests cover missing engineered columns, schema contracts, and the requirement for a fresh visualization input.</p>
+              <p>Tests cover schema exposure, missing engineered columns, and the requirement for fresh sweep artifacts before visualization.</p>
             </div>
           </div>
           <div class="card-grid two" style="margin-top: 18px;">
@@ -985,32 +1075,32 @@ temp_treemap_source_gender_smoker.csv</div>
       <section class="slide" data-title="Value & Roadmap">
         <div class="left">
           <div class="kicker">Slide 8</div>
-          <h2>The value proposition is simple: flexible interface, controlled math.</h2>
+          <h2>The technical narrative is now concrete: agent roles, tool surfaces, and inspectable handoffs.</h2>
           <p>
-            This system is useful because it lets teams interact conversationally with a structured actuarial workflow, without surrendering determinism or auditability.
+            This framing makes the presentation stronger for technical stakeholders because it shows a bounded orchestration engine with explicit modules, not an abstract “AI assistant” story.
           </p>
           <ul>
-            <li>Developers get a codebase with clear boundaries and inspectable artifacts.</li>
-            <li>Actuaries get deterministic A/E logic and explicit guardrails against invented math.</li>
-            <li>Stakeholders get a workflow they can understand without reading every Python file.</li>
+            <li>Developers can map each agent to the exact tools and files it controls.</li>
+            <li>Actuaries can see exactly where validation, sweep math, and visualization boundaries sit.</li>
+            <li>Stakeholders can understand why the architecture is more trustworthy than a general-purpose chatbot.</li>
           </ul>
         </div>
         <div class="right">
           <div class="roadmap-grid">
             <div class="roadmap">
               <span class="label">Now</span>
-              <h3>Canonical docs</h3>
-              <p>README becomes the technical anchor and this deck becomes the portable stakeholder narrative.</p>
+              <h3>Architecture-forward deck</h3>
+              <p>The presentation now leads with orchestration, tool calls, and deterministic module ownership.</p>
             </div>
             <div class="roadmap">
               <span class="label">Next</span>
-              <h3>Broader review</h3>
-              <p>Use the UAT checklist and deck to align technical reviewers and business stakeholders on the same system model.</p>
+              <h3>Technical review</h3>
+              <p>Use the deck to walk engineers and actuaries through role boundaries, artifacts, and test-backed guarantees.</p>
             </div>
             <div class="roadmap">
               <span class="label">Later</span>
               <h3>Production hardening</h3>
-              <p>Expand datasets, UI polish, monitoring, and operational controls without weakening the deterministic core.</p>
+              <p>Expand UI polish, monitoring, and deployment controls while keeping the tool-owned computation model intact.</p>
             </div>
           </div>
           <div class="note" style="margin-top: 18px;">
