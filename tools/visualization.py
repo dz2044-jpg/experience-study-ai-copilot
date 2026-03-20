@@ -3,6 +3,7 @@
 import os
 from html import escape
 from typing import Iterable, Optional
+from uuid import uuid4
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -20,6 +21,8 @@ _ACCENT_COLORS = [
 ]
 _MAX_GROUP_COLORS = 6
 _FIGURE_CONFIG = {"displaylogo": False, "responsive": True}
+_SCATTER_X_MAX = 3.0
+_TREEMAP_COLOR_MAX = 2.0
 
 
 def _validate_metric(metric: str) -> None:
@@ -45,6 +48,17 @@ def _metric_columns(metric: str) -> dict[str, str]:
         "ci_low": "AE_Amount_CI_Lower",
         "ci_high": "AE_Amount_CI_Upper",
     }
+
+
+def _metric_label(metric: str) -> str:
+    """Return a display-safe metric label for titles and axes."""
+    _validate_metric(metric)
+    return "Count" if metric == "count" else "Amount"
+
+
+def _ratio_label(metric: str) -> str:
+    """Return the explicit A/E label shown in visuals."""
+    return f"A/E Ratio ({_metric_label(metric)})"
 
 
 def _treemap_value_spec(df: pd.DataFrame, metric: str) -> tuple[str, str]:
@@ -173,6 +187,9 @@ def _prepare_scatter_source(df: pd.DataFrame, metric: str, data_path: str) -> tu
     prepared = df.copy()
     prepared[cohort_col] = prepared[cohort_col].astype(str)
     prepared = prepared.sort_values(metric_cols["ratio"], ascending=False).reset_index(drop=True)
+    prepared["display_ratio"] = prepared[metric_cols["ratio"]].clip(lower=0, upper=_SCATTER_X_MAX)
+    prepared["display_ci_low"] = prepared[metric_cols["ci_low"]].clip(lower=0, upper=_SCATTER_X_MAX)
+    prepared["display_ci_high"] = prepared[metric_cols["ci_high"]].clip(lower=0, upper=_SCATTER_X_MAX)
     prepared["marker_size"] = _marker_sizes(prepared[exposure_col])
     return prepared, metric_cols
 
@@ -181,12 +198,13 @@ def _build_scatter_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
     prepared, metric_cols = _prepare_scatter_source(df, metric, data_path)
     cohort_col = "Dimensions"
     exposure_col = "Sum_MOC"
+    ratio_label = _ratio_label(metric)
 
-    ae = prepared[metric_cols["ratio"]].astype(float)
-    ci_low = prepared[metric_cols["ci_low"]].astype(float)
-    ci_high = prepared[metric_cols["ci_high"]].astype(float)
-    err_plus = (ci_high - ae).clip(lower=0)
-    err_minus = (ae - ci_low).clip(lower=0)
+    display_ae = prepared["display_ratio"].astype(float)
+    display_ci_low = prepared["display_ci_low"].astype(float)
+    display_ci_high = prepared["display_ci_high"].astype(float)
+    err_plus = (display_ci_high - display_ae).clip(lower=0)
+    err_minus = (display_ae - display_ci_low).clip(lower=0)
 
     fig = go.Figure()
     group_map = _first_dimension_groups(prepared[cohort_col])
@@ -198,12 +216,12 @@ def _build_scatter_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
         for group, color in palette.items():
             mask = prepared[cohort_col].map(group_map).eq(group)
             subset = prepared[mask]
-            subset_ae = subset[metric_cols["ratio"]].astype(float)
-            subset_ci_low = subset[metric_cols["ci_low"]].astype(float)
-            subset_ci_high = subset[metric_cols["ci_high"]].astype(float)
+            subset_display_ae = subset["display_ratio"].astype(float)
+            subset_display_ci_low = subset["display_ci_low"].astype(float)
+            subset_display_ci_high = subset["display_ci_high"].astype(float)
             fig.add_trace(
                 go.Scatter(
-                    x=subset_ae,
+                    x=subset_display_ae,
                     y=subset[cohort_col],
                     mode="markers",
                     name=group,
@@ -216,8 +234,8 @@ def _build_scatter_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
                     error_x=dict(
                         type="data",
                         symmetric=False,
-                        array=(subset_ci_high - subset_ae).clip(lower=0),
-                        arrayminus=(subset_ae - subset_ci_low).clip(lower=0),
+                        array=(subset_display_ci_high - subset_display_ae).clip(lower=0),
+                        arrayminus=(subset_display_ae - subset_display_ci_low).clip(lower=0),
                         visible=True,
                         color=color,
                         thickness=1.4,
@@ -236,7 +254,8 @@ def _build_scatter_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
                         "Exposure (MOC): %{customdata[1]}<br>"
                         "Actual: %{customdata[2]}<br>"
                         "Expected: %{customdata[3]}<br>"
-                        "A/E Ratio: %{customdata[4]}<br>"
+                        f"{ratio_label}: "
+                        "%{customdata[4]}<br>"
                         "95% CI: %{customdata[5]} - %{customdata[6]}<extra></extra>"
                     ),
                 )
@@ -244,10 +263,10 @@ def _build_scatter_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
     else:
         fig.add_trace(
             go.Scatter(
-                x=ae,
+                x=display_ae,
                 y=prepared[cohort_col],
                 mode="markers",
-                name="A/E Ratio",
+                name=ratio_label,
                 marker=dict(
                     color=_NEUTRAL_COLOR,
                     size=prepared["marker_size"],
@@ -277,22 +296,24 @@ def _build_scatter_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
                     "Exposure (MOC): %{customdata[1]}<br>"
                     "Actual: %{customdata[2]}<br>"
                     "Expected: %{customdata[3]}<br>"
-                    "A/E Ratio: %{customdata[4]}<br>"
+                    f"{ratio_label}: "
+                    "%{customdata[4]}<br>"
                     "95% CI: %{customdata[5]} - %{customdata[6]}<extra></extra>"
                 ),
             )
         )
 
     fig.add_vline(x=1.0, line_dash="dash", line_color="#c05252", line_width=2)
-    fig.update_xaxes(title_text="A/E Ratio", zeroline=False, gridcolor="#d9e2ec")
+    fig.update_xaxes(title_text=ratio_label, zeroline=False, gridcolor="#d9e2ec", range=[0, _SCATTER_X_MAX])
     fig.update_yaxes(title_text="Cohort", automargin=True, autorange="reversed")
-    _common_layout(fig, "Forest Plot", height=_scatter_height(len(prepared)))
+    _common_layout(fig, f"Forest Plot ({_metric_label(metric)})", height=_scatter_height(len(prepared)))
     fig.update_layout(showlegend=bool(group_map), legend=dict(orientation="h", y=1.08, x=0.02))
     return fig
 
 
 def _build_table_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.Figure:
     prepared, metric_cols = _prepare_scatter_source(df, metric, data_path)
+    ratio_label = _ratio_label(metric)
     fig = go.Figure(
         go.Table(
             header=dict(
@@ -301,7 +322,7 @@ def _build_table_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.Fig
                     "Exposure (MOC)",
                     "Actual",
                     "Expected",
-                    "A/E Ratio",
+                    ratio_label,
                     "95% CI",
                 ],
                 fill_color="#e7eef5",
@@ -325,7 +346,7 @@ def _build_table_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.Fig
             ),
         )
     )
-    _common_layout(fig, "Filtered Cohort Detail", height=_table_height(len(prepared)))
+    _common_layout(fig, f"Filtered Cohort Detail ({_metric_label(metric)})", height=_table_height(len(prepared)))
     return fig
 
 
@@ -438,6 +459,7 @@ def _build_treemap_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
         raise ValueError(f"Missing required column 'Dimensions' in {data_path}")
 
     metric_cols = _metric_columns(metric)
+    ratio_label = _ratio_label(metric)
     value_col, value_label = _treemap_value_spec(df, metric)
     _required_columns(df, [metric_cols["ratio"], value_col], data_path)
 
@@ -477,8 +499,8 @@ def _build_treemap_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
                 colors=nodes["ratio"],
                 colorscale="RdYlGn_r",
                 cmid=1.0,
-                cmin=max(0.0, min(nodes["ratio"].min(), 1.0) - 0.05),
-                cmax=max(nodes["ratio"].max(), 1.0) + 0.05,
+                cmin=0.0,
+                cmax=_TREEMAP_COLOR_MAX,
                 line=dict(width=1, color="#ffffff"),
             ),
             texttemplate="%{label}<br>A/E: %{customdata[2]}",
@@ -489,13 +511,14 @@ def _build_treemap_figure(df: pd.DataFrame, metric: str, data_path: str) -> go.F
                 f"{value_label}: %{customdata[1]}<br>"
                 "Actual: %{customdata[3]}<br>"
                 "Expected: %{customdata[4]}<br>"
-                "A/E Ratio: %{customdata[2]}<br>"
+                f"{ratio_label}: "
+                "%{customdata[2]}<br>"
                 "%{customdata[5]}<extra></extra>"
             ),
             customdata=customdata,
         )
     )
-    _common_layout(fig, "Risk Treemap", height=900)
+    _common_layout(fig, f"Risk Treemap ({_metric_label(metric)})", height=900)
     fig.update_layout(uniformtext=dict(minsize=10, mode="hide"))
     return fig
 
@@ -506,11 +529,14 @@ def _figure_fragment(fig: go.Figure) -> str:
 
 def _build_report_html(
     title: str,
+    metric: str,
     scatter_fragment: str,
     table_fragment: str,
     treemap_fragment: str,
 ) -> str:
     plotly_js = get_plotlyjs()
+    ratio_label = _ratio_label(metric)
+    metric_label = _metric_label(metric)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -614,30 +640,38 @@ def _build_report_html(
     <header class="report-header">
       <div class="eyebrow">Experience Study</div>
       <h1>{escape(title)}</h1>
-      <p class="report-subtitle">Forest plot, full cohort detail table, and treemap combined into one offline report for browser-first review.</p>
+      <p class="report-subtitle">Forest plot, full cohort detail table, and treemap combined into one offline report for browser-first review. Primary metric shown: {escape(ratio_label)}.</p>
     </header>
 
     <section class="report-section" id="forest-plot">
-      <h2>Forest Plot</h2>
-      <p>Ranked cohort A/E view with confidence intervals and exposure-aware marker sizing.</p>
+      <h2>Forest Plot ({escape(metric_label)})</h2>
+      <p>Ranked cohort {escape(ratio_label)} view with confidence intervals and exposure-aware marker sizing. Displayed x-axis is capped at {_SCATTER_X_MAX:.1f} for readability.</p>
       <div class="figure-shell">{scatter_fragment}</div>
     </section>
 
     <section class="report-section" id="cohort-detail">
-      <h2>Filtered Cohort Detail</h2>
-      <p>Full filtered sweep rows shown directly under the forest plot for exact cohort inspection.</p>
+      <h2>Filtered Cohort Detail ({escape(metric_label)})</h2>
+      <p>Full filtered sweep rows shown directly under the forest plot for exact cohort inspection using {escape(ratio_label)}.</p>
       <div class="figure-shell">{table_fragment}</div>
     </section>
 
     <section class="report-section" id="risk-treemap">
-      <h2>Risk Treemap</h2>
-      <p>Structural risk view using the same filtered cohort slice as the scatter plot and detail table.</p>
+      <h2>Risk Treemap ({escape(metric_label)})</h2>
+      <p>Structural risk view using the same filtered cohort slice as the scatter plot and detail table, colored by {escape(ratio_label)}. Color intensity is capped at A/E {_TREEMAP_COLOR_MAX:.1f} for readability.</p>
       <div class="figure-shell">{treemap_fragment}</div>
     </section>
   </main>
 </body>
 </html>
 """
+
+
+def _unique_report_output_path(base_filename: str) -> str:
+    """Generate a unique HTML artifact path so prior chat visuals are not overwritten."""
+    directory, filename = os.path.split(base_filename)
+    stem, ext = os.path.splitext(filename)
+    unique_suffix = uuid4().hex[:10]
+    return os.path.join(directory, f"{stem}_{unique_suffix}{ext}")
 
 
 def _write_combined_report(data_path: str, metric: str, output_filename: str) -> str:
@@ -648,10 +682,11 @@ def _write_combined_report(data_path: str, metric: str, output_filename: str) ->
     table_fragment = _figure_fragment(_build_table_figure(df, metric, data_path))
     treemap_fragment = _figure_fragment(_build_treemap_figure(df, metric, data_path))
 
-    title = "Combined A/E Visualization Report" if metric == "amount" else "Combined A/E Visualization Report (Count)"
-    html = _build_report_html(title, scatter_fragment, table_fragment, treemap_fragment)
+    metric_label = _metric_label(metric)
+    title = f"Combined A/E Visualization Report ({metric_label})"
+    html = _build_report_html(title, metric, scatter_fragment, table_fragment, treemap_fragment)
 
-    out_path = os.path.abspath(output_filename)
+    out_path = os.path.abspath(_unique_report_output_path(output_filename))
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as handle:
         handle.write(html)
