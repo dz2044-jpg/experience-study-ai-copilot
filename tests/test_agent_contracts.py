@@ -69,8 +69,10 @@ def test_actuary_agent_runs_explicit_sweep_without_mapping_confirmation(tmp_path
                         "AE_Amount_CI": [0.9, 2.0],
                     }
                 ],
+                "depth": 1,
                 "output_path": "data/output/sweep_summary_1_gender_smoker_issue_age_band.csv",
                 "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
             }
         )
 
@@ -87,6 +89,9 @@ def test_actuary_agent_runs_explicit_sweep_without_mapping_confirmation(tmp_path
     assert captured["min_mac"] == 0
     assert captured["selected_columns"] == ["Gender", "Smoker", "Issue_Age_band"]
     assert agent.latest_output_path == "data/output/sweep_summary_1_gender_smoker_issue_age_band.csv"
+    assert agent.latest_output_alias_path == "data/output/sweep_summary.csv"
+    assert agent.latest_depth_output_path == "data/output/sweep_summary_latest_1.csv"
+    assert agent.latest_output_paths_by_depth == {1: "data/output/sweep_summary_latest_1.csv"}
 
 
 def test_actuary_agent_includes_ranked_table_and_top_ranked_summary(tmp_path, monkeypatch):
@@ -127,8 +132,10 @@ def test_actuary_agent_includes_ranked_table_and_top_ranked_summary(tmp_path, mo
                         "AE_Amount_CI": [0.7, 2.2],
                     },
                 ],
+                "depth": 1,
                 "output_path": "data/output/sweep_summary_1_gender_smoker.csv",
                 "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
             }
         )
 
@@ -174,8 +181,10 @@ def test_actuary_agent_supports_sum_mac_ranking(tmp_path, monkeypatch):
                         "AE_Amount_CI": [0.8, 1.9],
                     }
                 ],
+                "depth": 1,
                 "output_path": "data/output/sweep_summary_1_gender.csv",
                 "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
             }
         )
 
@@ -211,8 +220,10 @@ def test_actuary_agent_recognizes_two_dimensional_wording(tmp_path, monkeypatch)
                         "AE_Amount_CI": [0.8, 2.2],
                     }
                 ],
+                "depth": 2,
                 "output_path": "data/output/sweep_summary_2_risk_class_gender_smoker.csv",
                 "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_2.csv",
             }
         )
 
@@ -225,6 +236,48 @@ def test_actuary_agent_recognizes_two_dimensional_wording(tmp_path, monkeypatch)
     assert captured["depth"] == 2
     assert captured["selected_columns"] == ["Risk_Class", "Gender", "Smoker"]
     assert response.startswith("2-way dimensional sweep complete on the prepared analysis dataset")
+
+
+def test_actuary_agent_tracks_depth_specific_aliases_across_runs(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.csv"
+    analysis_path.write_text(FIXTURE_PATH.read_text())
+
+    payloads = iter(
+        [
+            json.dumps(
+                {
+                    "results": [{"Dimensions": "Gender=F", "AE_Ratio_Count": 1.2, "AE_Ratio_Amount": 1.1, "AE_Count_CI": [0.8, 1.7], "AE_Amount_CI": [0.7, 1.6]}],
+                    "depth": 1,
+                    "output_path": "data/output/sweep_summary_1_gender.csv",
+                    "latest_output_path": "data/output/sweep_summary.csv",
+                    "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
+                }
+            ),
+            json.dumps(
+                {
+                    "results": [{"Dimensions": "Gender=F | Smoker=Yes", "AE_Ratio_Count": 1.5, "AE_Ratio_Amount": 1.4, "AE_Count_CI": [0.9, 2.0], "AE_Amount_CI": [0.8, 1.9]}],
+                    "depth": 2,
+                    "output_path": "data/output/sweep_summary_2_gender_smoker.csv",
+                    "latest_output_path": "data/output/sweep_summary.csv",
+                    "latest_depth_output_path": "data/output/sweep_summary_latest_2.csv",
+                }
+            ),
+        ]
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_actuary_module, "run_dimensional_sweep", lambda **kwargs: next(payloads))
+
+    agent = ActuaryAgent()
+    agent.run("Run a 1-way dimensional sweep on Gender.")
+    agent.run("Run a 2-way dimensional sweep on Gender and Smoker.")
+
+    assert agent.latest_output_paths_by_depth == {
+        1: "data/output/sweep_summary_latest_1.csv",
+        2: "data/output/sweep_summary_latest_2.csv",
+    }
 
 
 def test_actuary_agent_returns_missing_column_guidance_for_unprepared_feature(tmp_path, monkeypatch):
@@ -546,3 +599,86 @@ def test_analyst_agent_rejects_missing_single_dimension_treemap(tmp_path, monkey
 
     assert "does not contain one-way rows for `risk_class`" in response
     assert "available one-way dimensions" in response.lower()
+
+
+def test_analyst_agent_resolves_single_feature_request_to_latest_one_way_alias(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    one_way_path = output_dir / "sweep_summary_latest_1.csv"
+    one_way_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F,1.1\n")
+    generic_path = output_dir / "sweep_summary.csv"
+    generic_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+
+    monkeypatch.chdir(tmp_path)
+    agent = AnalystAgent()
+
+    resolved_path, error = agent.resolve_visualization_data_path(
+        "Generate visualization for Gender only.",
+        generic_latest_path=str(generic_path),
+        depth_alias_paths={1: str(one_way_path), 2: str(output_dir / "sweep_summary_latest_2.csv")},
+    )
+
+    assert error is None
+    assert resolved_path == str(one_way_path)
+
+
+def test_analyst_agent_resolves_pair_request_to_latest_two_way_alias(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    two_way_path = output_dir / "sweep_summary_latest_2.csv"
+    two_way_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+    generic_path = output_dir / "sweep_summary.csv"
+    generic_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F,1.1\n")
+
+    monkeypatch.chdir(tmp_path)
+    agent = AnalystAgent()
+
+    resolved_path, error = agent.resolve_visualization_data_path(
+        "Generate visualization for Risk Class and Smoker.",
+        generic_latest_path=str(generic_path),
+        depth_alias_paths={2: str(two_way_path)},
+    )
+
+    assert error is None
+    assert resolved_path == str(two_way_path)
+
+
+def test_analyst_agent_requires_matching_depth_alias_when_requested(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    generic_path = output_dir / "sweep_summary.csv"
+    generic_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+
+    monkeypatch.chdir(tmp_path)
+    agent = AnalystAgent()
+
+    resolved_path, error = agent.resolve_visualization_data_path(
+        "Generate visualization for Gender only.",
+        generic_latest_path=str(generic_path),
+        depth_alias_paths={2: str(output_dir / "sweep_summary_latest_2.csv")},
+    )
+
+    assert resolved_path is None
+    assert error is not None
+    assert "fresh 1-way sweep artifact" in error
+
+
+def test_analyst_agent_prefers_explicit_two_way_wording_over_three_listed_columns(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    two_way_path = output_dir / "sweep_summary_latest_2.csv"
+    two_way_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+    generic_path = output_dir / "sweep_summary.csv"
+    generic_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+
+    monkeypatch.chdir(tmp_path)
+    agent = AnalystAgent()
+
+    resolved_path, error = agent.resolve_visualization_data_path(
+        "Generate visualization for the 2-way sweep between Risk Class, Gender, and Smoker.",
+        generic_latest_path=str(generic_path),
+        depth_alias_paths={2: str(two_way_path)},
+    )
+
+    assert error is None
+    assert resolved_path == str(two_way_path)

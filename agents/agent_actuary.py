@@ -66,6 +66,9 @@ class ActuaryAgent:
         self.client = build_openai_client()
         self.latest_output_path: Optional[str] = None
         self.latest_output_alias_path: Optional[str] = None
+        self.latest_depth_output_path: Optional[str] = None
+        self.latest_sweep_depth: Optional[int] = None
+        self.latest_output_paths_by_depth: Dict[int, str] = {}
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "run_dimensional_sweep": run_dimensional_sweep,
@@ -150,6 +153,8 @@ class ActuaryAgent:
         """Clear any previously recorded sweep output paths before a new run."""
         self.latest_output_path = None
         self.latest_output_alias_path = None
+        self.latest_depth_output_path = None
+        self.latest_sweep_depth = None
 
     def _record_sweep_artifacts(self, result_json: str) -> None:
         """Capture deterministic sweep artifact paths from tool JSON."""
@@ -163,10 +168,18 @@ class ActuaryAgent:
 
         output_path = payload.get("output_path")
         latest_alias_path = payload.get("latest_output_path")
+        latest_depth_output_path = payload.get("latest_depth_output_path")
+        depth = payload.get("depth")
         if isinstance(output_path, str) and output_path.strip():
             self.latest_output_path = output_path
         if isinstance(latest_alias_path, str) and latest_alias_path.strip():
             self.latest_output_alias_path = latest_alias_path
+        if isinstance(latest_depth_output_path, str) and latest_depth_output_path.strip():
+            self.latest_depth_output_path = latest_depth_output_path
+        if isinstance(depth, int):
+            self.latest_sweep_depth = depth
+            if isinstance(latest_depth_output_path, str) and latest_depth_output_path.strip():
+                self.latest_output_paths_by_depth[depth] = latest_depth_output_path
 
     @staticmethod
     def _normalize_column_name(name: str) -> str:

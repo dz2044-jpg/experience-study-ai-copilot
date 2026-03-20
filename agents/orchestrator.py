@@ -33,6 +33,7 @@ class StudyOrchestrator:
         self.pending_analysis_prompt: Optional[str] = None
         self.pending_visualization_prompt: Optional[str] = None
         self.latest_analysis_output_path: Optional[str] = None
+        self.latest_analysis_output_paths_by_depth: dict[int, str] = {}
 
     @staticmethod
     def _is_continue_message(user_query: str) -> bool:
@@ -142,14 +143,16 @@ class StudyOrchestrator:
         """Return True only when the current-session sweep artifact exists on disk."""
         return bool(path and Path(path).exists())
 
-    def _resolve_visualization_data_path(self, user_query: str) -> Optional[str]:
-        """Choose the visualization input path, preferring explicit user paths then fresh session artifacts."""
+    def _resolve_visualization_data_path(self, user_query: str) -> tuple[Optional[str], Optional[str]]:
+        """Choose the visualization input path from explicit paths or fresh session aliases."""
         explicit_path = self._extract_csv_path(user_query)
         if explicit_path:
-            return explicit_path
-        if self._has_fresh_analysis_artifact(self.latest_analysis_output_path):
-            return self.latest_analysis_output_path
-        return None
+            return (explicit_path, None)
+        return self.analyst_agent.resolve_visualization_data_path(
+            user_query,
+            generic_latest_path=self.latest_analysis_output_path,
+            depth_alias_paths=self.latest_analysis_output_paths_by_depth,
+        )
 
     def _set_last_agent(self, agent_name: Literal["STEWARD", "ACTUARY", "ANALYST"]) -> None:
         """Track the last active specialist and clear stale pending work."""
@@ -164,6 +167,7 @@ class StudyOrchestrator:
         self.pending_analysis_prompt = self._default_analysis_prompt()
         self.pending_visualization_prompt = None
         self.latest_analysis_output_path = None
+        self.latest_analysis_output_paths_by_depth = {}
         return response
 
     def _route_to_actuary(self, user_query: str) -> str:
@@ -171,24 +175,27 @@ class StudyOrchestrator:
         response = self.actuary.run(user_query)
         self._set_last_agent("ACTUARY")
         self.pending_analysis_prompt = None
-        if self._has_fresh_analysis_artifact(self.actuary.latest_output_path):
-            self.latest_analysis_output_path = self.actuary.latest_output_path
+        if self._has_fresh_analysis_artifact(self.actuary.latest_output_alias_path):
+            self.latest_analysis_output_path = self.actuary.latest_output_alias_path
+            if (
+                self.actuary.latest_sweep_depth is not None
+                and self._has_fresh_analysis_artifact(self.actuary.latest_depth_output_path)
+            ):
+                self.latest_analysis_output_paths_by_depth[self.actuary.latest_sweep_depth] = (
+                    self.actuary.latest_depth_output_path
+                )
             self.pending_visualization_prompt = self._default_visualization_prompt(
                 self.latest_analysis_output_path
             )
         else:
-            self.latest_analysis_output_path = None
             self.pending_visualization_prompt = None
         return response
 
     def _route_to_analyst(self, user_query: str) -> str:
         """Run visualization and clear pending visualization follow-ups."""
-        data_path = self._resolve_visualization_data_path(user_query)
-        if not data_path:
-            return (
-                "I do not have a fresh sweep artifact for this session. "
-                "Run an actuarial sweep first, or provide an explicit sweep summary CSV path."
-            )
+        data_path, resolution_error = self._resolve_visualization_data_path(user_query)
+        if resolution_error:
+            return resolution_error
 
         response = self.analyst_agent.run(user_query, data_path=data_path)
         self._set_last_agent("ANALYST")

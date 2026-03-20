@@ -36,11 +36,15 @@ def test_pairwise_combinatorial_sweep_generates_all_requested_pairs(tmp_path, mo
     assert "results" in result
     assert "output_path" in result
     assert "latest_output_path" in result
+    assert "latest_depth_output_path" in result
+    assert result["depth"] == 2
 
     dynamic_file = tmp_path / result["output_path"]
     latest_file = tmp_path / result["latest_output_path"]
+    latest_depth_file = tmp_path / result["latest_depth_output_path"]
     assert dynamic_file.exists()
     assert latest_file.exists()
+    assert latest_depth_file.exists()
 
     dims = [_pair_keys(r["Dimensions"]) for r in result["results"]]
     observed_pairs = set(dims)
@@ -83,13 +87,48 @@ def test_sweep_persists_full_ranked_csvs_while_json_respects_top_n(tmp_path, mon
 
     dynamic_file = tmp_path / result["output_path"]
     latest_file = tmp_path / result["latest_output_path"]
+    latest_depth_file = tmp_path / result["latest_depth_output_path"]
     dynamic_df = pd.read_csv(dynamic_file)
     latest_df = pd.read_csv(latest_file)
+    latest_depth_df = pd.read_csv(latest_depth_file)
 
     assert len(dynamic_df) > 2
     assert len(latest_df) > 2
+    assert len(latest_depth_df) > 2
     assert dynamic_df["AE_Ratio_Count"].tolist() == sorted(dynamic_df["AE_Ratio_Count"].tolist(), reverse=True)
     assert latest_df["AE_Ratio_Count"].tolist() == sorted(latest_df["AE_Ratio_Count"].tolist(), reverse=True)
+    assert latest_depth_df["AE_Ratio_Count"].tolist() == sorted(
+        latest_depth_df["AE_Ratio_Count"].tolist(), reverse=True
+    )
+
+
+def test_sweep_writes_depth_specific_latest_aliases(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = output_dir / "analysis_inforce.csv"
+    analysis_path.write_text(FIXTURE_PATH.read_text())
+
+    monkeypatch.chdir(tmp_path)
+
+    depth_to_expected = {
+        1: "data/output/sweep_summary_latest_1.csv",
+        2: "data/output/sweep_summary_latest_2.csv",
+        3: "data/output/sweep_summary_latest_3.csv",
+    }
+
+    for depth, expected_path in depth_to_expected.items():
+        result = json.loads(
+            run_dimensional_sweep(
+                depth=depth,
+                selected_columns=["Gender", "Smoker", "Risk_Class"],
+                min_mac=0,
+                top_n=5,
+                data_path=str(analysis_path),
+            )
+        )
+        assert result["latest_depth_output_path"] == expected_path
+        assert (tmp_path / expected_path).exists()
 
 
 def test_sweep_includes_zero_mac_cohorts_by_default(tmp_path, monkeypatch):

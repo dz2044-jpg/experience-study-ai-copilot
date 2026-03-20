@@ -90,7 +90,7 @@ class AnalystAgent:
         ]
         if len(tokens) < 2:
             return None
-        return [cls._normalize_dimension_name(token) for token in tokens[:2]]
+        return [cls._normalize_dimension_name(token) for token in tokens]
 
     @classmethod
     def _extract_requested_univariate_dimension(cls, user_message: str) -> Optional[str]:
@@ -99,6 +99,7 @@ class AnalystAgent:
             r"\bvisuali[sz]e\s+(.+?)\s+only(?:[?.]|$)",
             r"\bfor\s+(.+?)\s+only(?:[?.]|$)",
             r"\bon\s+(.+?)\s+only(?:[?.]|$)",
+            r"\b(?:generate|create|show)\s+(?:a\s+)?(?:visual(?:ization)?(?:\s+report)?|plot(?:s)?|report)\s+for\s+(.+?)(?:[?.]|$)",
             r"\b(?:treemap|heatmap)\s+(?:report|plot|chart)?\s*(?:of|for|on)\s+(.+?)(?:[?.]|$)",
             r"\b(?:univariate|scatter|forest plot)\s+(?:report|plot|chart)?\s*(?:of|for|on)\s+(.+?)(?:[?.]|$)",
         ]
@@ -121,6 +122,8 @@ class AnalystAgent:
             "this sweep",
             "the sweep",
             "current sweep",
+            "we just ran",
+            "just ran",
             "report",
             "plot",
             "chart",
@@ -131,9 +134,80 @@ class AnalystAgent:
         if not cleaned:
             return None
         normalized = cls._normalize_dimension_name(cleaned)
-        if normalized in {"this", "that", "it", "sweep"}:
+        if normalized in {"this", "that", "it", "sweep", "me"}:
+            return None
+        if "sweep" in normalized or re.search(r"(^|_)(one|two|three|[123])_way($|_)", normalized):
+            return None
+        if any(connector in normalized for connector in ("_and_", ",")):
             return None
         return normalized
+
+    @staticmethod
+    def _extract_requested_depth(user_message: str) -> Optional[int]:
+        """Infer the visualization depth requested by the user."""
+        msg = user_message.lower()
+        depth_match = re.search(r"\b([123])[- ]way\b", msg)
+        if depth_match:
+            return int(depth_match.group(1))
+        dimensional_match = re.search(r"\b([123])[- ]dimensional\b", msg)
+        if dimensional_match:
+            return int(dimensional_match.group(1))
+        word_dimensional_match = re.search(r"\b(one|two|three)[- ]dimensional\b", msg)
+        if word_dimensional_match:
+            return {"one": 1, "two": 2, "three": 3}[word_dimensional_match.group(1)]
+        if "pairwise" in msg or "all pairs" in msg:
+            return 2
+        return None
+
+    @staticmethod
+    def _has_fresh_artifact(path: Optional[str]) -> bool:
+        """Return True only when the alias path exists on disk."""
+        return bool(path and Path(path).exists())
+
+    def resolve_visualization_data_path(
+        self,
+        user_message: str,
+        generic_latest_path: Optional[str],
+        depth_alias_paths: Optional[dict[int, str]] = None,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Resolve the best visualization artifact from explicit or depth-specific aliases."""
+        explicit_path = self._extract_csv_path(user_message)
+        if explicit_path:
+            return (explicit_path, None)
+
+        depth_alias_paths = depth_alias_paths or {}
+        requested_dimensions = self._extract_requested_dimensions(user_message) or []
+        requested_univariate_dimension = self._extract_requested_univariate_dimension(user_message)
+        requested_depth = self._extract_requested_depth(user_message)
+
+        target_depth: Optional[int] = None
+        if requested_univariate_dimension:
+            target_depth = 1
+        elif requested_depth in {1, 2, 3}:
+            target_depth = requested_depth
+        elif len(requested_dimensions) == 2:
+            target_depth = 2
+        elif len(requested_dimensions) >= 3:
+            target_depth = 3
+
+        if target_depth is not None:
+            alias_path = depth_alias_paths.get(target_depth)
+            if self._has_fresh_artifact(alias_path):
+                return (alias_path, None)
+            return (
+                None,
+                f"I do not have a fresh {target_depth}-way sweep artifact for this session. "
+                f"Run a {target_depth}-way actuarial sweep first, or provide an explicit sweep summary CSV path.",
+            )
+
+        if self._has_fresh_artifact(generic_latest_path):
+            return (generic_latest_path, None)
+
+        return (
+            None,
+            "I do not have a fresh sweep artifact for this session. "
+            "Run an actuarial sweep first, or provide an explicit sweep summary CSV path.",
+        )
 
     @classmethod
     def _filter_treemap_source_for_dimensions(cls, data_path: str, requested_dimensions: list[str]) -> tuple[Optional[str], Optional[str]]:
@@ -315,7 +389,7 @@ class AnalystAgent:
         self.last_data_path_used = resolved_data_path
 
         requested_dimensions = self._extract_requested_dimensions(user_message) or []
-        if requested_dimensions:
+        if len(requested_dimensions) == 2:
             filtered_path, error_message = self._filter_treemap_source_for_dimensions(
                 resolved_data_path,
                 requested_dimensions,

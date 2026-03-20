@@ -43,6 +43,9 @@ def test_continue_after_analysis_routes_to_pending_visualization(monkeypatch):
     def fake_actuary_run(message):
         calls.append(("actuary", message))
         orchestrator.actuary.latest_output_path = str(artifact_path)
+        orchestrator.actuary.latest_output_alias_path = str(artifact_path)
+        orchestrator.actuary.latest_depth_output_path = str(artifact_path)
+        orchestrator.actuary.latest_sweep_depth = 1
         return "actuary-ok"
 
     def fake_analyst_run(message, data_path=None):
@@ -102,4 +105,55 @@ def test_visualization_requires_fresh_analysis_artifact(monkeypatch):
 
     result = orchestrator.process_query("Generate a treemap of the 2-way sweep we just ran")
 
-    assert "fresh sweep artifact" in result
+    assert "fresh 2-way sweep artifact" in result
+
+
+def test_orchestrator_uses_one_way_alias_for_single_feature_visualization(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    orchestrator = StudyOrchestrator()
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    generic_path = output_dir / "sweep_summary.csv"
+    generic_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+    one_way_path = output_dir / "sweep_summary_latest_1.csv"
+    one_way_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F,1.1\n")
+    two_way_path = output_dir / "sweep_summary_latest_2.csv"
+    two_way_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+
+    orchestrator.latest_analysis_output_path = str(generic_path)
+    orchestrator.latest_analysis_output_paths_by_depth = {
+        1: str(one_way_path),
+        2: str(two_way_path),
+    }
+
+    calls = []
+
+    def fake_analyst_run(message, data_path=None):
+        calls.append((message, data_path))
+        return "analyst-ok"
+
+    monkeypatch.setattr(orchestrator.analyst_agent, "run", fake_analyst_run)
+
+    result = orchestrator.process_query("Generate visualization for Gender only.")
+
+    assert result == "analyst-ok"
+    assert calls == [("Generate visualization for Gender only.", str(one_way_path))]
+
+
+def test_orchestrator_returns_controlled_error_when_requested_depth_alias_is_missing(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    orchestrator = StudyOrchestrator()
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    generic_path = output_dir / "sweep_summary.csv"
+    generic_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+    orchestrator.latest_analysis_output_path = str(generic_path)
+    orchestrator.latest_analysis_output_paths_by_depth = {}
+
+    result = orchestrator.process_query("Generate visualization for Gender only.")
+
+    assert "fresh 1-way sweep artifact" in result

@@ -151,6 +151,11 @@ VALID_SORT_COLUMNS = {
 SWEEP_OUTPUT_PATH = "data/output/sweep_summary.csv"
 
 
+def _latest_sweep_output_path_for_depth(depth: int) -> Path:
+    """Return the stable latest-alias path for a given sweep depth."""
+    return Path(f"data/output/sweep_summary_latest_{depth}.csv")
+
+
 def run_dimensional_sweep(
     depth: int = 1,
     filters: Optional[List[str]] = None,
@@ -309,6 +314,12 @@ def run_dimensional_sweep(
     latest_out_path.parent.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(latest_out_path, index=False)
 
+    # Keep a depth-specific latest alias so visualization can deterministically
+    # resolve the newest compatible artifact without scanning historical files.
+    latest_depth_out_path = _latest_sweep_output_path_for_depth(depth)
+    latest_depth_out_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_df.to_csv(latest_depth_out_path, index=False)
+
     # Convert to JSON-serializable format
     out_list = top_results.to_dict(orient="records")
     # Fix CI tuples (ensure floats)
@@ -325,8 +336,10 @@ def run_dimensional_sweep(
     return json.dumps(
         {
             "results": out_list,
+            "depth": depth,
             "output_path": str(dynamic_out_path),
             "latest_output_path": str(latest_out_path),
+            "latest_depth_output_path": str(latest_depth_out_path),
         },
         indent=2,
     )
