@@ -55,7 +55,7 @@ The system is designed as a staged workflow rather than an unrestricted agent ch
 
 ### 1. Data Prep
 
-The Data Steward reads a source CSV, profiles it, validates actuarial rules, and writes engineered output to:
+The Data Steward reads a source raw dataset in `.csv`, `.parquet`, or `.xlsx`, profiles it, validates actuarial rules, and writes engineered output to:
 
 - `data/output/analysis_inforce.csv`
 
@@ -171,6 +171,8 @@ If the key is unavailable, parts of the system fall back to deterministic routin
 ```bash
 uv run streamlit run main.py
 ```
+
+Raw inputs can now be referenced explicitly in prompts using `.csv`, `.parquet`, or `.xlsx` paths.
 
 ### Run The CLI Copilot
 

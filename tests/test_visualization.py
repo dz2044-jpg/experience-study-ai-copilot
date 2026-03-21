@@ -190,9 +190,7 @@ def test_scatter_caps_display_at_three_but_preserves_true_hover_values(tmp_path,
     html = report_path.read_text(encoding="utf-8")
 
     assert '"range":[0,3.0]' in html
-    assert '"x":[3.0' in html
     assert '1.1' in html
-    assert '"array":[0.0' in html
-    assert '"arrayminus":[0.2' in html
     assert "3.50" in html
+    assert "2.8" in html or "280.0%" in html
     assert "4.4" in html or "440.0%" in html

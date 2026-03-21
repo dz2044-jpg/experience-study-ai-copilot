@@ -81,6 +81,17 @@ Notes:
   The Steward reports missing values in `COLA`, but explains that null `COLA` values are expected for non-claim rows.
   It must not silently drop rows or describe the null pattern as a generic data corruption issue.
 
+### Test 3A: The Multi-Format Input Check
+
+- Action:
+  Prompt the Copilot using explicit raw input paths, for example:
+  `Profile data/input/example.parquet`
+  and
+  `Profile data/input/example.xlsx`
+- Expected Pass:
+  The Steward reads both formats successfully without requiring CSV conversion.
+  For `.xlsx`, it should read the default worksheet unless a specific sheet is provided through a steward tool call.
+
 ## Phase 2: Orchestration & Workflow Guardrails
 
 ### Test 4: The Guardrail Check

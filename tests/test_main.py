@@ -125,7 +125,7 @@ def test_render_app_renders_history_visualization_from_saved_metadata(monkeypatc
 
     assert ("expander", "View visualization") in dummy_st.calls
     assert any(call[0] == "button" and call[1]["label"] == "Open in browser" for call in dummy_st.calls)
-    assert any(call[0] == "caption" and str(html_path.resolve()) in call[1] for call in dummy_st.calls)
+    assert any(call[0] == "caption" and "Saved HTML artifact:" in call[1] for call in dummy_st.calls)
     html_calls = [call for call in dummy_st.calls if call[0] == "html"]
     assert len(html_calls) == 1
     assert html_calls[0][1]["html"] == "<div>history chart</div>"

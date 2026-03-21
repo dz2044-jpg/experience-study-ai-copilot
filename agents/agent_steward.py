@@ -26,6 +26,9 @@ from tools.data_steward import (
     run_actuarial_data_checks,
 )
 
+RAW_INPUT_PATH_RE = re.compile(r"((?:/|data/)[\w./-]+\.(?:csv|parquet|xlsx))", re.IGNORECASE)
+DEFAULT_RAW_INPUT_PATH = "data/input/synthetic_inforce.csv"
+
 
 SYSTEM_PROMPT = """
 You are a meticulous Data Engineer and Actuarial Data Steward.
@@ -116,22 +119,37 @@ class DataStewardAgent:
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             return json.dumps({"error": f"{tool_name} failed: {str(exc)}"}, indent=2)
 
+    @staticmethod
+    def _extract_tabular_path(user_message: str) -> Optional[str]:
+        """Extract an explicit supported raw-input path from the user message."""
+        path_match = RAW_INPUT_PATH_RE.search(user_message)
+        if not path_match:
+            return None
+        return path_match.group(1)
+
+    def _execute_tool_with_context(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        dataset_context: Optional[dict[str, Any]],
+    ) -> str:
+        if tool_name not in self.tool_handlers:
+            return json.dumps({"error": f"Unknown tool: {tool_name}"}, indent=2)
+        return self._execute_tool(tool_name, args)
+
     def _fallback_route(self, user_message: str) -> str:
         """Deterministic fallback when no API key is configured."""
         msg = user_message.lower()
+        active_data_path = self._extract_tabular_path(user_message) or DEFAULT_RAW_INPUT_PATH
+        active_sheet_name = None
 
         if "profile" in msg or "moc" in msg:
-            data_path = "data/input/synthetic_inforce.csv"
-            path_match = re.search(r"(data/[\w./-]+\.csv)", user_message)
-            if path_match:
-                data_path = path_match.group(1)
-
-            profile_json = profile_dataset(data_path=data_path)
-            checks_json = run_actuarial_data_checks(data_path=data_path)
+            profile_json = profile_dataset(data_path=active_data_path, sheet_name=active_sheet_name)
+            checks_json = run_actuarial_data_checks(data_path=active_data_path, sheet_name=active_sheet_name)
             checks = json.loads(checks_json)
             status = checks.get("status", "UNKNOWN")
             return (
-                f"Profile complete for `{data_path}`.\n"
+                f"Profile complete for `{active_data_path}`.\n"
                 f"- Validation status: **{status}**\n"
                 f"- MOC check included: numeric type, range (0,1], and MAC==1 => MOC==1.0\n"
                 f"- Profile JSON:\n{profile_json}\n\n"
@@ -142,15 +160,14 @@ class DataStewardAgent:
             bins = 5 if "5" in msg else 4
             col_match = re.search(r"for the\s+([A-Za-z_][A-Za-z0-9_]*)\s+column", user_message, re.IGNORECASE)
             source_column = col_match.group(1) if col_match else "Issue_Age"
-            source_path = "data/input/synthetic_inforce.csv"
-            if not Path(source_path).exists():
-                source_path = "data/input/synthetic_inforce.csv"
+            source_path = active_data_path
             result = create_categorical_bands(
                 source_column=source_column,
                 strategy="equal_width",
                 bins=bins,
                 source_path=source_path,
                 output_path="data/output/analysis_inforce.csv",
+                sheet_name=active_sheet_name,
             )
             return (
                 f"Banding complete for `{source_column}` using equal-width `{bins}` bins.\n"
@@ -182,13 +199,14 @@ class DataStewardAgent:
             source_column = column_match.group(1)
             source_path = "data/output/analysis_inforce.csv"
             if not Path(source_path).exists():
-                source_path = "data/input/synthetic_inforce.csv"
+                source_path = active_data_path
 
             result = regroup_categorical_features(
                 source_column=source_column,
                 mapping_dict=mapping_dict,
                 source_path=source_path,
                 output_path="data/output/analysis_inforce.csv",
+                sheet_name=active_sheet_name if source_path == active_data_path else None,
             )
             return (
                 f"Regrouping complete for `{source_column}`.\n"
@@ -199,7 +217,7 @@ class DataStewardAgent:
 
         return (
             "I can help with profiling, actuarial data checks, and categorical banding. "
-            "Please specify a dataset path and transformation request."
+            "Please specify a transformation request and dataset path when needed."
         )
 
     def run(self, user_message: str) -> str:
@@ -249,7 +267,7 @@ class DataStewardAgent:
                         return last_tool_result
                     return (
                         "I hit a repeated tool-call loop. Please rephrase your request with "
-                        "an explicit dataset path, e.g. `data/input/synthetic_inforce.csv`."
+                        "an explicit dataset path, e.g. `data/input/synthetic_inforce.csv` or `data/input/example.parquet`."
                     )
                 seen_tool_calls.add(call_signature)
 
@@ -268,7 +286,7 @@ class DataStewardAgent:
             return last_tool_result
         return (
             "Unable to complete request within tool-calling loop. "
-            "Please provide an explicit CSV path and request (for example: "
+            "Please provide an explicit dataset path and request (for example: "
             "'Profile data/input/synthetic_inforce.csv')."
         )
 

@@ -9,7 +9,11 @@ class ProfileDatasetSchema(BaseModel):
 
     data_path: str = Field(
         default="data/input/synthetic_inforce.csv",
-        description="Path to the source CSV file to profile.",
+        description="Path to the source raw input file to profile (.csv, .parquet, or .xlsx).",
+    )
+    sheet_name: Optional[str] = Field(
+        default=None,
+        description="Optional worksheet name when data_path points to an .xlsx workbook.",
     )
 
 
@@ -18,7 +22,7 @@ class FeatureEngineeringSchema(BaseModel):
 
     data_path: str = Field(
         default="data/input/synthetic_inforce.csv",
-        description="Source CSV path for feature engineering (alias of source_path).",
+        description="Source raw input path for feature engineering (alias of source_path).",
     )
     operation: str = Field(
         ...,
@@ -46,11 +50,15 @@ class FeatureEngineeringSchema(BaseModel):
     )
     source_path: str = Field(
         default="data/input/synthetic_inforce.csv",
-        description="Input CSV path for transformation.",
+        description="Input raw path for transformation (.csv, .parquet, or .xlsx).",
     )
     output_path: str = Field(
         default="data/output/analysis_inforce.csv",
         description="Output CSV path to save transformed data.",
+    )
+    sheet_name: Optional[str] = Field(
+        default=None,
+        description="Optional worksheet name when source_path points to an .xlsx workbook.",
     )
 
 
@@ -63,7 +71,7 @@ class RegroupCategoricalSchema(BaseModel):
 
     data_path: str = Field(
         default="data/input/synthetic_inforce.csv",
-        description="Source CSV path for regrouping (alias of source_path).",
+        description="Source raw input path for regrouping (alias of source_path).",
     )
     source_column: str = Field(
         ...,
@@ -75,11 +83,15 @@ class RegroupCategoricalSchema(BaseModel):
     )
     source_path: str = Field(
         default="data/input/synthetic_inforce.csv",
-        description="Input CSV path for regrouping.",
+        description="Input raw path for regrouping (.csv, .parquet, or .xlsx).",
     )
     output_path: str = Field(
         default="data/output/analysis_inforce.csv",
         description="Output CSV path to save transformed data.",
+    )
+    sheet_name: Optional[str] = Field(
+        default=None,
+        description="Optional worksheet name when source_path points to an .xlsx workbook.",
     )
 
 

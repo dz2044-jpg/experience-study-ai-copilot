@@ -78,3 +78,53 @@ def test_run_actuarial_data_checks_keeps_actuarial_fields_numerical(tmp_path):
 
     for col in ["MAC", "MEC", "MOC", "MAF", "MEF"]:
         assert feature_classification[col] == "numerical"
+
+
+def test_profile_dataset_supports_parquet_input(tmp_path):
+    source_df = pd.read_csv(FIXTURE_PATH)
+    source = tmp_path / "inforce.parquet"
+    source_df.to_parquet(source, index=False)
+
+    result = json.loads(data_steward.profile_dataset(str(source)))
+
+    assert result["total_rows"] == len(source_df)
+    assert result["data_types"]["MAC"] == "float64"
+
+
+def test_create_categorical_bands_supports_xlsx_sheet_input(tmp_path, monkeypatch):
+    source_df = pd.read_csv(FIXTURE_PATH)
+    workbook_path = tmp_path / "inforce.xlsx"
+    with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "Policy_Number": ["IGNORE"],
+                "MAC": [0],
+                "MEC": [0.1],
+                "MOC": [1],
+                "MAF": [0],
+                "MEF": [10],
+                "Face_Amount": [1000],
+                "Issue_Age": [30],
+                "Risk_Class": ["Standard"],
+            }
+        ).to_excel(writer, sheet_name="IgnoreMe", index=False)
+        source_df.to_excel(writer, sheet_name="Inforce", index=False)
+
+    output = tmp_path / "analysis_inforce.csv"
+    monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
+    monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
+
+    result = json.loads(
+        data_steward.create_categorical_bands(
+            source_column="Face_Amount",
+            strategy="equal_width",
+            bins=4,
+            source_path=str(workbook_path),
+            sheet_name="Inforce",
+        )
+    )
+
+    assert result["success"] is True
+    engineered = pd.read_csv(output)
+    assert "Face_Amount_band" in engineered.columns
+    assert "IGNORE" not in engineered["Policy_Number"].astype(str).tolist()

@@ -12,6 +12,8 @@ from typing import Optional
 
 import pandas as pd
 
+from tools.data_io import load_tabular_input, load_tabular_input_as_strings
+
 # Records the exact time this script is loaded into memory for the chat session.
 _SESSION_START_TIME = time.time()
 
@@ -20,22 +22,16 @@ ACTUARIAL_NUMERICS = ["MAC", "MEC", "MAF", "MEF", "MOC"]
 RAW_MISSING_TOKENS = {"", "na", "nan", "null", "none", "n/a"}
 
 
-def _load_inforce(path: str) -> pd.DataFrame:
-    """Load CSV and ensure Policy_Number is string (converts from int if needed)."""
-    df = pd.read_csv(path)
-
-    # Enforce absolute numeric types for core actuarial columns.
-    for col in ACTUARIAL_NUMERICS:
-        if col in df.columns:
-            # Force to float64 to ensure downstream A/E math doesn't fail on categorical/int boundaries.
-            df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
-
-    if "Policy_Number" in df.columns and not pd.api.types.is_string_dtype(df["Policy_Number"]):
-        df["Policy_Number"] = df["Policy_Number"].astype(str)
-    return df
+def _load_inforce(path: str, sheet_name: Optional[str] = None) -> pd.DataFrame:
+    """Load supported raw input formats and normalize core inforce types."""
+    return load_tabular_input(path, sheet_name=sheet_name)
 
 
-def _load_feature_engineering_frame(source_path: str, output_path: str) -> pd.DataFrame:
+def _load_feature_engineering_frame(
+    source_path: str,
+    output_path: str,
+    sheet_name: Optional[str] = None,
+) -> pd.DataFrame:
     """
     Session-aware load for feature engineering:
     - If output exists and was modified during this session, append to it.
@@ -43,12 +39,12 @@ def _load_feature_engineering_frame(source_path: str, output_path: str) -> pd.Da
     """
     if os.path.exists(output_path) and os.path.getmtime(output_path) >= _SESSION_START_TIME:
         return _load_inforce(output_path)
-    return _load_inforce(source_path)
+    return _load_inforce(source_path, sheet_name=sheet_name)
 
 
-def _find_raw_non_numeric_values(data_path: str) -> list[str]:
+def _find_raw_non_numeric_values(data_path: str, sheet_name: Optional[str] = None) -> list[str]:
     """Identify raw source values in actuarial numeric columns that cannot be parsed as numbers."""
-    raw_df = pd.read_csv(data_path, dtype=str, keep_default_na=False)
+    raw_df = load_tabular_input_as_strings(data_path, sheet_name=sheet_name)
     issues: list[str] = []
 
     for col in ACTUARIAL_NUMERICS:
@@ -84,7 +80,10 @@ def _classify_feature_type(df: pd.DataFrame, column: str) -> str:
     return "categorical"
 
 
-def profile_dataset(data_path: str = "data/input/synthetic_inforce.csv") -> str:
+def profile_dataset(
+    data_path: str = "data/input/synthetic_inforce.csv",
+    sheet_name: Optional[str] = None,
+) -> str:
     """
     Profile the dataset and return descriptive statistics as a JSON string.
 
@@ -95,7 +94,7 @@ def profile_dataset(data_path: str = "data/input/synthetic_inforce.csv") -> str:
     if not path.exists():
         return json.dumps({"error": f"File not found: {data_path}"}, indent=2)
 
-    df = _load_inforce(data_path)
+    df = _load_inforce(data_path, sheet_name=sheet_name)
 
     null_counts = {col: int(df[col].isna().sum()) for col in df.columns}
 
@@ -121,7 +120,10 @@ def profile_dataset(data_path: str = "data/input/synthetic_inforce.csv") -> str:
     return json.dumps(result, indent=2)
 
 
-def run_actuarial_data_checks(data_path: str = "data/input/synthetic_inforce.csv") -> str:
+def run_actuarial_data_checks(
+    data_path: str = "data/input/synthetic_inforce.csv",
+    sheet_name: Optional[str] = None,
+) -> str:
     """
     Validate the dataset against actuarial rules and return PASS/FAIL with specific issues.
     """
@@ -132,8 +134,8 @@ def run_actuarial_data_checks(data_path: str = "data/input/synthetic_inforce.csv
             indent=2,
         )
 
-    issues = _find_raw_non_numeric_values(data_path)
-    df = _load_inforce(data_path)
+    issues = _find_raw_non_numeric_values(data_path, sheet_name=sheet_name)
+    df = _load_inforce(data_path, sheet_name=sheet_name)
 
     # --- Type checks ---
     if "Policy_Number" in df.columns:
@@ -261,6 +263,7 @@ def create_categorical_bands(
     custom_bins: Optional[list] = None,
     source_path: str = "data/input/synthetic_inforce.csv",
     output_path: str = "data/output/analysis_inforce.csv",
+    sheet_name: Optional[str] = None,
 ) -> str:
     """
     Create banded categorical column from a numeric source column.
@@ -274,7 +277,11 @@ def create_categorical_bands(
 
     # STEP 1: Session-aware load (append to current session output when present).
     output_path = ANALYSIS_OUTPUT_PATH
-    df = _load_feature_engineering_frame(source_path=source_path, output_path=output_path)
+    df = _load_feature_engineering_frame(
+        source_path=source_path,
+        output_path=output_path,
+        sheet_name=sheet_name,
+    )
 
     if source_column not in df.columns:
         return json.dumps(
@@ -335,6 +342,7 @@ def regroup_categorical_features(
     mapping_dict: dict[str, str],
     source_path: str = "data/output/analysis_inforce.csv",
     output_path: str = "data/output/analysis_inforce.csv",
+    sheet_name: Optional[str] = None,
 ) -> str:
     """
     Create regrouped categorical column using a mapping dictionary.
@@ -346,7 +354,11 @@ def regroup_categorical_features(
 
     # Session-aware load to preserve previously appended columns in this chat.
     output_path = ANALYSIS_OUTPUT_PATH
-    df = _load_feature_engineering_frame(source_path=source_path, output_path=output_path)
+    df = _load_feature_engineering_frame(
+        source_path=source_path,
+        output_path=output_path,
+        sheet_name=sheet_name,
+    )
 
     if source_column not in df.columns:
         return json.dumps(
