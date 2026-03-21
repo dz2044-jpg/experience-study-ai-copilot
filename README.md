@@ -49,6 +49,46 @@ The `agents/` layer wraps those tools with schema-bound tool calling:
 
 Pydantic contracts in [`agents/schemas.py`](agents/schemas.py) define the tool-call interfaces used by the agents.
 
+## Agent-To-Tool Mapping
+
+The easiest way to understand the repo is to follow which tools each agent is allowed to call.
+
+### Study Orchestrator
+
+[`agents/orchestrator.py`](agents/orchestrator.py) is the control plane. It does not own actuarial math or file transformation logic. It owns:
+
+- intent classification into `GENERAL`, `DATA_PREP`, `ANALYSIS`, `VISUALIZE`, and `CONTINUE`
+- session-aware continuation state such as the last active agent and pending next-step prompts
+- routing into the correct specialist based on the current request and available artifacts
+
+### Data Steward Agent
+
+[`agents/agent_steward.py`](agents/agent_steward.py) is allowed to call deterministic data-preparation tools:
+
+- `profile_dataset`
+- `run_actuarial_data_checks`
+- `create_categorical_bands`
+- `regroup_categorical_features`
+
+Its job is to produce a trusted analysis-ready dataset for downstream actuarial work.
+
+### Lead Actuary Agent
+
+[`agents/agent_actuary.py`](agents/agent_actuary.py) is intentionally narrow. Its primary tool surface is:
+
+- `run_dimensional_sweep`
+
+The agent interprets the results, but the sweep logic, ranking, and Bayesian interval math all live in [`tools/insight_engine.py`](tools/insight_engine.py).
+
+### Analyst Agent
+
+[`agents/agent_analyst.py`](agents/agent_analyst.py) owns the reporting layer and calls:
+
+- `generate_univariate_report`
+- `generate_treemap_report`
+
+Those tools read aggregated sweep outputs and write standalone HTML artifacts for browser review.
+
 ## End-To-End Workflow
 
 The system is designed as a staged workflow rather than an unrestricted agent chain.
@@ -112,9 +152,11 @@ StudyOrchestrator
 Important implementation boundaries:
 
 - the orchestrator routes; it does not perform actuarial math
+- the orchestrator is the only component that owns multi-step continuation state
 - the steward can engineer features but does not run sweeps
 - the actuary can run sweeps but does not create missing feature columns
 - the analyst visualizes aggregated sweep output rather than raw inforce data
+- tool permissions are intentionally narrow and agent-specific rather than shared across the whole system
 
 ## Project Structure
 
