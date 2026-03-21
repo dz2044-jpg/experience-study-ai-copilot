@@ -5,7 +5,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -22,18 +22,35 @@ Intent = Literal["GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"]
 class StudyOrchestrator:
     """Routes user requests to Data Steward, Lead Actuary, Analyst, or general response."""
 
-    def __init__(self, classifier_model: str = "gpt-5-nano") -> None:
+    def __init__(
+        self,
+        classifier_model: str = "gpt-5-nano",
+        status_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
         self.classifier_model = classifier_model
+        self.status_callback = status_callback
         self.client = build_openai_client()
 
-        self.data_steward = DataStewardAgent()
-        self.actuary = ActuaryAgent()
-        self.analyst_agent = AnalystAgent()
+        self.data_steward = DataStewardAgent(status_callback=status_callback)
+        self.actuary = ActuaryAgent(status_callback=status_callback)
+        self.analyst_agent = AnalystAgent(status_callback=status_callback)
         self.last_active_agent: Optional[Literal["STEWARD", "ACTUARY", "ANALYST"]] = None
         self.pending_analysis_prompt: Optional[str] = None
         self.pending_visualization_prompt: Optional[str] = None
         self.latest_analysis_output_path: Optional[str] = None
         self.latest_analysis_output_paths_by_depth: dict[int, str] = {}
+
+    def set_status_callback(self, status_callback: Optional[Callable[[str], None]]) -> None:
+        """Set a per-request status callback and propagate it to child agents."""
+        self.status_callback = status_callback
+        self.data_steward.set_status_callback(status_callback)
+        self.actuary.set_status_callback(status_callback)
+        self.analyst_agent.set_status_callback(status_callback)
+
+    def _emit_status(self, message: str) -> None:
+        """Publish a UI status update when a callback is configured."""
+        if self.status_callback:
+            self.status_callback(message)
 
     @staticmethod
     def _is_continue_message(user_query: str) -> bool:
@@ -162,6 +179,7 @@ class StudyOrchestrator:
 
     def _route_to_steward(self, user_query: str) -> str:
         """Run data prep and queue a sensible follow-up analysis step."""
+        self._emit_status("Orchestrator: routing request to Data Steward.")
         response = self.data_steward.run(user_query)
         self._set_last_agent("STEWARD")
         self.pending_analysis_prompt = self._default_analysis_prompt()
@@ -172,6 +190,7 @@ class StudyOrchestrator:
 
     def _route_to_actuary(self, user_query: str) -> str:
         """Run analysis and queue a sensible follow-up visualization step."""
+        self._emit_status("Orchestrator: routing request to Lead Actuary.")
         response = self.actuary.run(user_query)
         self._set_last_agent("ACTUARY")
         self.pending_analysis_prompt = None
@@ -193,10 +212,13 @@ class StudyOrchestrator:
 
     def _route_to_analyst(self, user_query: str) -> str:
         """Run visualization and clear pending visualization follow-ups."""
+        self._emit_status("Orchestrator: resolving visualization artifact.")
         data_path, resolution_error = self._resolve_visualization_data_path(user_query)
         if resolution_error:
+            self._emit_status("Orchestrator: visualization request cannot proceed without a fresh sweep artifact.")
             return resolution_error
 
+        self._emit_status("Orchestrator: routing request to Analyst.")
         response = self.analyst_agent.run(user_query, data_path=data_path)
         self._set_last_agent("ANALYST")
         self.pending_analysis_prompt = None
@@ -205,6 +227,7 @@ class StudyOrchestrator:
 
     def _handle_continue(self) -> str:
         """Continue the next pending step using instance-level state."""
+        self._emit_status("Orchestrator: continuing the pending workflow step.")
         if self.pending_analysis_prompt:
             prompt = self.pending_analysis_prompt
             self.pending_analysis_prompt = None
@@ -256,11 +279,16 @@ class StudyOrchestrator:
     def _classify_intent(self, user_query: str) -> Intent:
         """Classify request into GENERAL, DATA_PREP, ANALYSIS, VISUALIZE, or CONTINUE."""
         if self._is_continue_message(user_query):
+            self._emit_status("Orchestrator: treating this as a continue/confirm message.")
             return "CONTINUE"
 
         if not self.client:
-            return self._heuristic_classify(user_query)
+            self._emit_status("Orchestrator: classifying intent with local heuristics.")
+            intent = self._heuristic_classify(user_query)
+            self._emit_status(f"Orchestrator: intent classified as {intent}.")
+            return intent
 
+        self._emit_status("Orchestrator: classifying intent with the OpenAI router.")
         prompt = (
             "You are the Master Orchestrator for an Actuarial AI Copilot. "
             "Classify the user's request into exactly one label: GENERAL, DATA_PREP, ANALYSIS, VISUALIZE, or CONTINUE.\n\n"
@@ -282,7 +310,10 @@ class StudyOrchestrator:
                 temperature=0,
             )
         except Exception:
-            return self._heuristic_classify(user_query)
+            self._emit_status("Orchestrator: classifier unavailable, falling back to local heuristics.")
+            intent = self._heuristic_classify(user_query)
+            self._emit_status(f"Orchestrator: intent classified as {intent}.")
+            return intent
         raw_response = completion.choices[0].message.content or "{}"
         clean_response = raw_response.strip()
 
@@ -304,17 +335,23 @@ class StudyOrchestrator:
             if intent in {"GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"}:
                 heuristic_intent = self._heuristic_classify(user_query)
                 if intent == "DATA_PREP" and heuristic_intent == "ANALYSIS":
+                    self._emit_status(f"Orchestrator: intent classified as {heuristic_intent}.")
                     return heuristic_intent
+                self._emit_status(f"Orchestrator: intent classified as {intent}.")
                 return intent  # type: ignore[return-value]
         except json.JSONDecodeError as exc:
             # Keep conversation flowing even if classifier returns malformed JSON.
             print(f"[Orchestrator Debug] JSON parsing failed: {exc}. Falling back to GENERAL.")
+            self._emit_status("Orchestrator: classifier returned invalid JSON, falling back to GENERAL.")
             return "GENERAL"
 
-        return self._heuristic_classify(user_query)
+        intent = self._heuristic_classify(user_query)
+        self._emit_status(f"Orchestrator: intent classified as {intent}.")
+        return intent
 
     def process_query(self, user_query: str) -> str:
         """Route a query to the appropriate specialized agent(s)."""
+        self._emit_status("Orchestrator: received a new request.")
         intent = self._classify_intent(user_query)
 
         if intent == "GENERAL":
@@ -326,6 +363,7 @@ class StudyOrchestrator:
                 return self._route_to_steward(user_query)
             if self._has_visualization_intent(q):
                 return self._route_to_analyst(user_query)
+            self._emit_status("Orchestrator: returning general guidance without specialist routing.")
             return (
                 "I can help with data preparation, actuarial analysis, or visualization. "
                 "Share what you want to do, and I will route it."
@@ -343,6 +381,7 @@ class StudyOrchestrator:
         if intent == "CONTINUE":
             return self._handle_continue()
 
+        self._emit_status("Orchestrator: request did not match a supported route.")
         return (
             "I can route this request to Data Steward, Lead Actuary, or Analyst. "
             "Please specify whether you want data prep, analysis, or visualization."

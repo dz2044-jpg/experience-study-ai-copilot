@@ -36,15 +36,29 @@ generated, which metric was used, and that it is available in the app.
 class AnalystAgent:
     """Agent that turns aggregated A/E data into interactive visual reports."""
 
-    def __init__(self, model: str = "gpt-5.3-codex") -> None:
+    def __init__(
+        self,
+        model: str = "gpt-5.3-codex",
+        status_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
         self.model = model
         self.client = build_openai_client()
+        self.status_callback = status_callback
         self.last_data_path_used: Optional[str] = None
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "generate_univariate_report": generate_univariate_report,
             "generate_treemap_report": generate_treemap_report,
         }
+
+    def set_status_callback(self, status_callback: Optional[Callable[[str], None]]) -> None:
+        """Set a per-request status callback."""
+        self.status_callback = status_callback
+
+    def _emit_status(self, message: str) -> None:
+        """Publish a UI status update when available."""
+        if self.status_callback:
+            self.status_callback(message)
 
     @staticmethod
     def _normalize_dimension_name(name: str) -> str:
@@ -388,14 +402,18 @@ class AnalystAgent:
         resolved_data_path = data_path or self._extract_csv_path(user_message) or "data/output/sweep_summary.csv"
         self.last_data_path_used = resolved_data_path
 
+        self._emit_status("Analyst: resolving the sweep summary artifact for visualization.")
         requested_dimensions = self._extract_requested_dimensions(user_message) or []
         if len(requested_dimensions) == 2:
+            self._emit_status("Analyst: filtering the artifact to the requested dimension pair.")
             filtered_path, error_message = self._filter_treemap_source_for_dimensions(
                 resolved_data_path,
                 requested_dimensions,
             )
         else:
             requested_dimension = self._extract_requested_univariate_dimension(user_message)
+            if requested_dimension:
+                self._emit_status("Analyst: filtering the artifact to the requested one-way dimension.")
             filtered_path, error_message = self._filter_univariate_source_for_dimension(
                 resolved_data_path,
                 requested_dimension,
@@ -405,6 +423,7 @@ class AnalystAgent:
 
         try:
             self.last_data_path_used = filtered_path
+            self._emit_status(f"Analyst: generating the {metric} visualization report.")
             return generate_univariate_report(data_path=filtered_path or resolved_data_path, metric=metric)
         except Exception as exc:
             return f"Unable to generate visualization report: {exc}"
@@ -420,7 +439,9 @@ class AnalystAgent:
         # Visualization defaults should be deterministic and driven by the actual
         # sweep artifact, not by model interpretation.
         if not resolved_data_path:
+            self._emit_status("Analyst: no explicit sweep path provided, resolving from current session context.")
             return self._fallback_route(user_message, data_path=data_path)
+        self._emit_status("Analyst: using the resolved sweep artifact from the current session.")
         return self._fallback_route(user_message, data_path=resolved_data_path)
 
 

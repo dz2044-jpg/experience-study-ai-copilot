@@ -61,9 +61,14 @@ class ActuaryAgent:
 
     DEFAULT_ANALYSIS_PATH = "data/output/analysis_inforce.csv"
 
-    def __init__(self, model: str = "gpt-5.4") -> None:
+    def __init__(
+        self,
+        model: str = "gpt-5.4",
+        status_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
         self.model = model
         self.client = build_openai_client()
+        self.status_callback = status_callback
         self.latest_output_path: Optional[str] = None
         self.latest_output_alias_path: Optional[str] = None
         self.latest_depth_output_path: Optional[str] = None
@@ -73,6 +78,15 @@ class ActuaryAgent:
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "run_dimensional_sweep": run_dimensional_sweep,
         }
+
+    def set_status_callback(self, status_callback: Optional[Callable[[str], None]]) -> None:
+        """Set a per-request status callback."""
+        self.status_callback = status_callback
+
+    def _emit_status(self, message: str) -> None:
+        """Publish a UI status update when available."""
+        if self.status_callback:
+            self.status_callback(message)
 
     def _tools_spec(self) -> list[dict[str, Any]]:
         return [
@@ -314,6 +328,7 @@ class ActuaryAgent:
         if not self._is_explicit_sweep_request(user_message):
             return None
 
+        self._emit_status("Lead Actuary: validating the prepared analysis dataset.")
         available_columns = self._load_analysis_columns(self.DEFAULT_ANALYSIS_PATH)
         if available_columns is None:
             return (
@@ -334,6 +349,7 @@ class ActuaryAgent:
         min_mac = self._extract_min_mac(user_message)
         top_n = self._extract_top_n(user_message)
 
+        self._emit_status(f"Lead Actuary: running a {depth}-way dimensional sweep.")
         sweep = run_dimensional_sweep(
             depth=depth,
             selected_columns=selected_columns,
@@ -348,6 +364,7 @@ class ActuaryAgent:
             f"{depth}-way dimensional sweep complete on the prepared analysis dataset "
             f"using {selected_label}, ranked by {sort_by}."
         )
+        self._emit_status("Lead Actuary: summarizing the sweep results.")
         return self._summarize_sweep(sweep, context, sort_by)
 
     def _summarize_sweep(self, result_json: str, context: str, sort_by: str = "AE_Ratio_Amount") -> str:
@@ -396,6 +413,7 @@ class ActuaryAgent:
         msg = user_message.lower()
 
         if "single cohort" in msg and "face amount" in msg:
+            self._emit_status("Lead Actuary: running a 1-way sweep focused on Face Amount.")
             sweep = run_dimensional_sweep(
                 depth=1,
                 selected_columns=["Face_Amount"],
@@ -410,6 +428,7 @@ class ActuaryAgent:
             )
 
         if "1-way" in msg or "most adverse cohort" in msg or "rank cohorts by ae_ratio_amount" in msg:
+            self._emit_status("Lead Actuary: running a 1-way dimensional sweep.")
             sweep = run_dimensional_sweep(
                 depth=1,
                 min_mac=0,
@@ -427,6 +446,7 @@ class ActuaryAgent:
             min_match = re.search(r"min_mac\s*=\s*(\d+)", msg)
             if min_match:
                 min_mac = int(min_match.group(1))
+            self._emit_status("Lead Actuary: running a 2-way dimensional sweep.")
             sweep = run_dimensional_sweep(
                 depth=2,
                 min_mac=min_mac,
@@ -446,6 +466,7 @@ class ActuaryAgent:
 
     def run(self, user_message: str) -> str:
         """Handle message with OpenAI tool-calling."""
+        self._emit_status("Lead Actuary: clearing prior sweep artifacts.")
         self._reset_sweep_artifacts()
 
         deterministic_response = self._deterministic_sweep_route(user_message)
@@ -453,8 +474,10 @@ class ActuaryAgent:
             return deterministic_response
 
         if not self.client:
+            self._emit_status("Lead Actuary: OpenAI is unavailable, using deterministic fallback logic.")
             return self._fallback_route(user_message)
 
+        self._emit_status("Lead Actuary: requesting the next actuarial action from the model.")
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
@@ -470,11 +493,13 @@ class ActuaryAgent:
                 )
             except Exception:
                 # Keep deterministic local usability when network/proxy is unavailable.
+                self._emit_status("Lead Actuary: tool-calling is unavailable, falling back to deterministic logic.")
                 return self._fallback_route(user_message)
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []
 
             if not tool_calls:
+                self._emit_status("Lead Actuary: returning a direct response without tool execution.")
                 return message.content or "No response generated."
 
             messages.append(
@@ -488,8 +513,10 @@ class ActuaryAgent:
             for tool_call in tool_calls:
                 name = tool_call.function.name
                 args = json.loads(tool_call.function.arguments or "{}")
+                self._emit_status(f"Lead Actuary: executing `{name}`.")
                 tool_result = self._execute_tool(name, args)
                 if name == "run_dimensional_sweep":
+                    self._emit_status("Lead Actuary: recording sweep artifacts for downstream visualization.")
                     self._record_sweep_artifacts(tool_result)
                 messages.append(
                     {

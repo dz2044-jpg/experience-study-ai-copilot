@@ -50,9 +50,14 @@ CRITICAL GUARDRAILS:
 class DataStewardAgent:
     """Agent wrapper that routes user requests to deterministic steward tools."""
 
-    def __init__(self, model: str = "gpt-5-mini") -> None:
+    def __init__(
+        self,
+        model: str = "gpt-5-mini",
+        status_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
         self.model = model
         self.client = build_openai_client()
+        self.status_callback = status_callback
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
             "profile_dataset": profile_dataset,
@@ -60,6 +65,15 @@ class DataStewardAgent:
             "create_categorical_bands": create_categorical_bands,
             "regroup_categorical_features": regroup_categorical_features,
         }
+
+    def set_status_callback(self, status_callback: Optional[Callable[[str], None]]) -> None:
+        """Set a per-request status callback."""
+        self.status_callback = status_callback
+
+    def _emit_status(self, message: str) -> None:
+        """Publish a UI status update when available."""
+        if self.status_callback:
+            self.status_callback(message)
 
     def _tools_spec(self) -> list[dict[str, Any]]:
         """Build OpenAI tool specs from Pydantic schemas."""
@@ -144,6 +158,7 @@ class DataStewardAgent:
         active_sheet_name = None
 
         if "profile" in msg or "moc" in msg:
+            self._emit_status("Data Steward: profiling the dataset and running actuarial data checks.")
             profile_json = profile_dataset(data_path=active_data_path, sheet_name=active_sheet_name)
             checks_json = run_actuarial_data_checks(data_path=active_data_path, sheet_name=active_sheet_name)
             checks = json.loads(checks_json)
@@ -157,6 +172,7 @@ class DataStewardAgent:
             )
 
         if "band" in msg:
+            self._emit_status("Data Steward: creating categorical bands in the analysis dataset.")
             bins = 5 if "5" in msg else 4
             col_match = re.search(r"for the\s+([A-Za-z_][A-Za-z0-9_]*)\s+column", user_message, re.IGNORECASE)
             source_column = col_match.group(1) if col_match else "Issue_Age"
@@ -177,6 +193,7 @@ class DataStewardAgent:
             )
 
         if "regroup" in msg:
+            self._emit_status("Data Steward: regrouping categorical values into a derived feature.")
             column_match = re.search(
                 r"for the\s+([A-Za-z_][A-Za-z0-9_]*)\s+column",
                 user_message,
@@ -223,8 +240,10 @@ class DataStewardAgent:
     def run(self, user_message: str) -> str:
         """Handle a user message using OpenAI tool-calling."""
         if not self.client:
+            self._emit_status("Data Steward: OpenAI is unavailable, using deterministic local tooling.")
             return self._fallback_route(user_message)
 
+        self._emit_status("Data Steward: requesting the next data-prep action from the model.")
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
@@ -242,11 +261,13 @@ class DataStewardAgent:
                 )
             except Exception:
                 # Keep deterministic local usability when network/proxy is unavailable.
+                self._emit_status("Data Steward: tool-calling is unavailable, falling back to deterministic logic.")
                 return self._fallback_route(user_message)
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []
 
             if not tool_calls:
+                self._emit_status("Data Steward: returning a direct response without tool execution.")
                 return message.content or "No response generated."
 
             messages.append(
@@ -272,6 +293,7 @@ class DataStewardAgent:
                 seen_tool_calls.add(call_signature)
 
                 args = json.loads(raw_args)
+                self._emit_status(f"Data Steward: executing `{name}`.")
                 tool_result = self._execute_tool(name, args)
                 last_tool_result = tool_result
                 messages.append(
