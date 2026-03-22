@@ -101,7 +101,10 @@ def test_steward_agent_raw_schema_request_defaults_to_synthetic_input(monkeypatc
     response = agent.run("Profile the raw synthetic inforce data and list the data types for MAC, MEC, MAF, and MEF.")
 
     assert captured["data_path"] == "data/input/synthetic_inforce.csv"
-    assert "MAC — float64 — nulls: 0" in response
+    assert "Requested columns for `data/input/synthetic_inforce.csv`:" in response
+    assert "- `MAC`: `float64`; nulls: `0`" in response
+    assert "- `MEF`: `float64`; nulls: `0`" in response
+    assert "Gender" not in response
 
 
 def test_actuary_agent_runs_explicit_sweep_without_mapping_confirmation(tmp_path, monkeypatch):

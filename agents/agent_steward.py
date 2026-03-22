@@ -172,6 +172,12 @@ class DataStewardAgent:
         return any(hit in msg for hit in schema_hits)
 
     @staticmethod
+    def _normalize_column_name(name: str) -> str:
+        """Normalize column names for case-insensitive matching."""
+        normalized = re.sub(r"[^a-z0-9]+", "_", name.strip().lower())
+        return re.sub(r"_+", "_", normalized).strip("_")
+
+    @staticmethod
     def _default_schema_target_path(user_message: str) -> str:
         """Choose the default dataset for schema inspection requests."""
         msg = user_message.lower()
@@ -180,7 +186,25 @@ class DataStewardAgent:
         return DEFAULT_RAW_INPUT_PATH
 
     @staticmethod
-    def _format_profile_summary(profile_json: str, data_path: str) -> str:
+    def _extract_requested_schema_columns(user_message: str, available_columns: list[str]) -> list[str]:
+        """Return explicitly requested columns mentioned in the user's schema question."""
+        column_lookup = {
+            DataStewardAgent._normalize_column_name(column): column for column in available_columns
+        }
+        requested_columns: list[str] = []
+
+        for raw_token in re.split(r"[^A-Za-z0-9_]+", user_message):
+            normalized = DataStewardAgent._normalize_column_name(raw_token)
+            if not normalized:
+                continue
+            resolved = column_lookup.get(normalized)
+            if resolved and resolved not in requested_columns:
+                requested_columns.append(resolved)
+
+        return requested_columns
+
+    @staticmethod
+    def _format_profile_summary(profile_json: str, data_path: str, user_message: str) -> str:
         """Render a deterministic schema summary from the profile tool JSON."""
         payload = json.loads(profile_json)
         if payload.get("error"):
@@ -189,11 +213,18 @@ class DataStewardAgent:
         columns = payload.get("columns", [])
         data_types = payload.get("data_types", {})
         null_counts = payload.get("null_counts", {})
-        lines = [f"Columns, data types, and null counts for `{data_path}`:"]
+        requested_columns = DataStewardAgent._extract_requested_schema_columns(user_message, columns)
+        columns_to_show = requested_columns or columns
+
+        lines = []
+        if requested_columns:
+            lines.append(f"Requested columns for `{data_path}`:")
+        else:
+            lines.append(f"Columns, data types, and null counts for `{data_path}`:")
         lines.append("")
-        for column in columns:
+        for column in columns_to_show:
             lines.append(
-                f"{column} — {data_types.get(column, 'unknown')} — nulls: {null_counts.get(column, 'unknown')}"
+                f"- `{column}`: `{data_types.get(column, 'unknown')}`; nulls: `{null_counts.get(column, 'unknown')}`"
             )
         return "\n".join(lines)
 
@@ -205,7 +236,7 @@ class DataStewardAgent:
         active_data_path = self._extract_tabular_path(user_message) or self._default_schema_target_path(user_message)
         self._emit_status("Data Steward: profiling the dataset schema.")
         profile_json = profile_dataset(data_path=active_data_path)
-        return self._format_profile_summary(profile_json, active_data_path)
+        return self._format_profile_summary(profile_json, active_data_path, user_message)
 
     def _execute_tool_with_context(
         self,
