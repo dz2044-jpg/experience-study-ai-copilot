@@ -162,6 +162,7 @@ class DataStewardAgent:
         msg = user_message.lower()
         schema_hits = [
             "what columns",
+            "what are the columns",
             "list columns",
             "show columns",
             "column names",
@@ -170,6 +171,34 @@ class DataStewardAgent:
             "null counts",
         ]
         return any(hit in msg for hit in schema_hits)
+
+    @staticmethod
+    def _is_prepared_dataset_reference(user_message: str, explicit_path: Optional[str]) -> bool:
+        """Detect references to the prepared analysis artifact by name or path."""
+        msg = user_message.lower()
+        if (
+            "analysis_inforce" in msg
+            or "prepared analysis" in msg
+            or "prepared dataset" in msg
+        ):
+            return True
+        return bool(explicit_path and Path(explicit_path).name in {"analysis_inforce.parquet", "analysis_inforce.csv"})
+
+    @classmethod
+    def _should_use_deterministic_schema_route(
+        cls,
+        user_message: str,
+        explicit_path: Optional[str],
+    ) -> bool:
+        """Prefer deterministic schema output for schema questions and prepared-dataset profiling."""
+        if cls._is_schema_listing_request(user_message):
+            return True
+
+        msg = user_message.lower()
+        if "profile" not in msg:
+            return False
+
+        return cls._is_prepared_dataset_reference(user_message, explicit_path)
 
     @staticmethod
     def _normalize_column_name(name: str) -> str:
@@ -230,10 +259,11 @@ class DataStewardAgent:
 
     def _deterministic_schema_route(self, user_message: str) -> Optional[str]:
         """Handle explicit schema/column inspection requests without model summarization."""
-        if not self._is_schema_listing_request(user_message):
+        explicit_path = self._extract_tabular_path(user_message)
+        if not self._should_use_deterministic_schema_route(user_message, explicit_path):
             return None
 
-        active_data_path = self._extract_tabular_path(user_message) or self._default_schema_target_path(user_message)
+        active_data_path = explicit_path or self._default_schema_target_path(user_message)
         self._emit_status("Data Steward: profiling the dataset schema.")
         profile_json = profile_dataset(data_path=active_data_path)
         return self._format_profile_summary(profile_json, active_data_path, user_message)

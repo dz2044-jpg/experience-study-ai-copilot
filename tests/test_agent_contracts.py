@@ -75,9 +75,32 @@ def test_steward_agent_schema_request_resolves_bare_analysis_filename_and_lists_
     monkeypatch.chdir(tmp_path)
 
     agent = DataStewardAgent()
-    response = agent.run("what columns in the analysis_inforce.parquet")
+    response = agent.run("what are the columns in analysis_inforce.parquet")
 
     assert "data/output/analysis_inforce.parquet" in response
+    assert "Issue_Age_band" in response
+    assert "Face_Amount_band" in response
+
+
+def test_steward_agent_profile_request_for_prepared_dataset_lists_engineered_columns(
+    tmp_path, monkeypatch
+):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    engineered = pd.read_parquet(analysis_path)
+    engineered["Issue_Age_band"] = engineered["Issue_Age"].apply(lambda value: "older" if value >= 45 else "younger")
+    engineered["Face_Amount_band"] = engineered["Face_Amount"].apply(lambda value: "large" if value >= 500000 else "small")
+    engineered.to_parquet(analysis_path, index=False)
+
+    monkeypatch.chdir(tmp_path)
+
+    agent = DataStewardAgent()
+    response = agent.run("profile data/output/analysis_inforce.parquet")
+
+    assert "Columns, data types, and null counts for `data/output/analysis_inforce.parquet`:" in response
     assert "Issue_Age_band" in response
     assert "Face_Amount_band" in response
 
