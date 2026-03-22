@@ -66,6 +66,70 @@ def test_continue_after_analysis_routes_to_pending_visualization(monkeypatch):
     assert calls[1][2] == str(artifact_path)
 
 
+def test_combined_analysis_and_visualization_prompt_auto_chains(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    orchestrator = StudyOrchestrator()
+    calls = []
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = output_dir / "sweep_summary_latest_2.csv"
+    artifact_path.write_text("Dimensions,AE_Ratio_Amount\nGender=F | Smoker=Yes,1.3\n")
+
+    def fake_actuary_run(message):
+        calls.append(("actuary", message))
+        orchestrator.actuary.latest_output_alias_path = str(output_dir / "sweep_summary.csv")
+        orchestrator.actuary.latest_depth_output_path = str(artifact_path)
+        orchestrator.actuary.latest_sweep_depth = 2
+        return "actuary-ok"
+
+    def fake_analyst_run(message, data_path=None):
+        calls.append(("analyst", message, data_path))
+        return "Visualization report generated: /tmp/report.html"
+
+    monkeypatch.setattr(orchestrator.actuary, "run", fake_actuary_run)
+    monkeypatch.setattr(orchestrator.analyst_agent, "run", fake_analyst_run)
+
+    result = orchestrator.process_query(
+        "Run a 2-way dimensional sweep on Gender and Smoker, then generate a visualization."
+    )
+
+    assert result == "actuary-ok\n\nVisualization\nVisualization report generated: /tmp/report.html"
+    assert calls == [
+        ("actuary", "Run a 2-way dimensional sweep on Gender and Smoker, then generate a visualization."),
+        ("analyst", "Generate a visualization for the latest sweep.", str(artifact_path)),
+    ]
+    assert orchestrator.pending_visualization_prompt is None
+
+
+def test_combined_analysis_and_visualization_prompt_stops_when_no_fresh_artifact(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    orchestrator = StudyOrchestrator()
+    calls = []
+
+    def fake_actuary_run(message):
+        calls.append(("actuary", message))
+        orchestrator.actuary.latest_output_alias_path = None
+        orchestrator.actuary.latest_depth_output_path = None
+        orchestrator.actuary.latest_sweep_depth = None
+        return "actuary-only"
+
+    monkeypatch.setattr(orchestrator.actuary, "run", fake_actuary_run)
+    monkeypatch.setattr(
+        orchestrator.analyst_agent,
+        "run",
+        lambda message, data_path=None: calls.append(("analyst", message, data_path)) or "analyst-ok",
+    )
+
+    result = orchestrator.process_query(
+        "Run a 1-way dimensional sweep on Gender, then generate a visualization."
+    )
+
+    assert result == "actuary-only"
+    assert calls == [("actuary", "Run a 1-way dimensional sweep on Gender, then generate a visualization.")]
+
+
 def test_engineered_band_analysis_request_routes_to_actuary(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
@@ -95,6 +159,38 @@ def test_engineered_band_analysis_request_routes_to_actuary(monkeypatch):
             "Run 2-way dimensional sweeps for all pairs between Smoker, Risk_Class, and Issue_Age_band, "
             "then rank the results by AE_Ratio_Amount.",
         )
+    ]
+
+
+def test_data_prep_analysis_visualization_prompt_still_stops_at_steward(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    orchestrator = StudyOrchestrator()
+    calls = []
+
+    monkeypatch.setattr(
+        orchestrator.data_steward,
+        "run",
+        lambda message: calls.append(("steward", message)) or "steward-ok",
+    )
+    monkeypatch.setattr(
+        orchestrator.actuary,
+        "run",
+        lambda message: calls.append(("actuary", message)) or "actuary-ok",
+    )
+    monkeypatch.setattr(
+        orchestrator.analyst_agent,
+        "run",
+        lambda message, data_path=None: calls.append(("analyst", message, data_path)) or "analyst-ok",
+    )
+
+    result = orchestrator.process_query(
+        "Check the data, run a 1-way sweep on Gender, then generate a visualization."
+    )
+
+    assert result == "steward-ok"
+    assert calls == [
+        ("steward", "Check the data, run a 1-way sweep on Gender, then generate a visualization.")
     ]
 
 

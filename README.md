@@ -132,9 +132,11 @@ The orchestrator intentionally pauses after major stages and queues the next sen
 
 - after data prep, `continue` routes to actuarial analysis
 - after analysis, `continue` routes to visualization
+- a single prompt may auto-chain `ANALYSIS -> VISUALIZE` when the user explicitly asks for both
 - continuation is session-aware and backed by tested pending-state logic
 
 This preserves user control while still enabling a guided multi-step workflow.
+Data prep remains a hard stop and does not auto-chain into later stages.
 
 ## System Map
 

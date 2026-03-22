@@ -565,6 +565,32 @@ def test_analyst_agent_defaults_to_univariate_for_one_way_visualize_request(tmp_
     assert calls == [("scatter", str(sweep_path), "amount")]
 
 
+def test_analyst_agent_uses_latest_sweep_prompt_without_treating_it_as_dimension(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    sweep_path = output_dir / "sweep_summary_latest_1.csv"
+    sweep_path.write_text(
+        "Dimensions,Sum_MOC,Sum_MAF,Sum_MEF,AE_Ratio_Amount,AE_Amount_CI_Lower,AE_Amount_CI_Upper\n"
+        "Gender=M,100,120,100,1.2,0.9,1.5\n"
+        "Gender=F,150,135,150,0.9,0.7,1.1\n"
+    )
+
+    calls = []
+
+    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
+        calls.append(("scatter", data_path, metric))
+        return f"Visualization report generated: {data_path}"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
+
+    agent = AnalystAgent()
+    response = agent.run("Generate a visualization for the latest sweep.", data_path=str(sweep_path))
+
+    assert response.startswith("Visualization report generated:")
+    assert calls == [("scatter", str(sweep_path), "amount")]
+
+
 def test_analyst_agent_defaults_to_treemap_for_multiway_visualize_request(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
