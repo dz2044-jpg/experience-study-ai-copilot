@@ -5,6 +5,7 @@ import pandas as pd
 
 import agents.agent_actuary as agent_actuary_module
 import agents.agent_analyst as agent_analyst_module
+import agents.agent_steward as agent_steward_module
 from agents.agent_actuary import ActuaryAgent
 from agents.agent_analyst import AnalystAgent
 from agents.agent_steward import DataStewardAgent
@@ -15,16 +16,26 @@ from tools import data_steward
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "dummy_inforce.csv"
 
 
+def _write_analysis_parquet(path: Path) -> None:
+    pd.read_csv(FIXTURE_PATH).to_parquet(path, index=False)
+
+
 def test_dimensional_sweep_schema_exposes_selected_columns():
     schema = DimensionalSweepSchema.model_json_schema()
     assert "selected_columns" in schema["properties"]
 
 
-def test_steward_agent_can_execute_regroup_tool(tmp_path, monkeypatch):
-    source = tmp_path / "analysis_inforce.csv"
-    source.write_text(FIXTURE_PATH.read_text())
+def test_dimensional_sweep_schema_exposes_structured_filters():
+    schema = DimensionalSweepSchema.model_json_schema()
+    filters_schema = schema["properties"]["filters"]
+    assert filters_schema["items"]["$ref"].endswith("FilterClauseSchema")
 
-    output = tmp_path / "analysis_output.csv"
+
+def test_steward_agent_can_execute_regroup_tool(tmp_path, monkeypatch):
+    source = tmp_path / "analysis_inforce.parquet"
+    _write_analysis_parquet(source)
+
+    output = tmp_path / "analysis_output.parquet"
     monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
     agent = DataStewardAgent()
 
@@ -44,15 +55,60 @@ def test_steward_agent_can_execute_regroup_tool(tmp_path, monkeypatch):
     assert result["success"] is True
     assert saved_path.exists()
 
-    df = pd.read_csv(saved_path)
+    df = pd.read_parquet(saved_path)
     assert "Risk_Class_regrouped" in df.columns
+
+
+def test_steward_agent_schema_request_resolves_bare_analysis_filename_and_lists_engineered_columns(
+    tmp_path, monkeypatch
+):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    engineered = pd.read_parquet(analysis_path)
+    engineered["Issue_Age_band"] = engineered["Issue_Age"].apply(lambda value: "older" if value >= 45 else "younger")
+    engineered["Face_Amount_band"] = engineered["Face_Amount"].apply(lambda value: "large" if value >= 500000 else "small")
+    engineered.to_parquet(analysis_path, index=False)
+
+    monkeypatch.chdir(tmp_path)
+
+    agent = DataStewardAgent()
+    response = agent.run("what columns in the analysis_inforce.parquet")
+
+    assert "data/output/analysis_inforce.parquet" in response
+    assert "Issue_Age_band" in response
+    assert "Face_Amount_band" in response
+
+
+def test_steward_agent_raw_schema_request_defaults_to_synthetic_input(monkeypatch):
+    captured = {}
+
+    def fake_profile_dataset(data_path: str = "", sheet_name=None) -> str:
+        captured["data_path"] = data_path
+        return json.dumps(
+            {
+                "columns": ["MAC", "MEC", "MAF", "MEF"],
+                "data_types": {"MAC": "float64", "MEC": "float64", "MAF": "float64", "MEF": "float64"},
+                "null_counts": {"MAC": 0, "MEC": 0, "MAF": 0, "MEF": 0},
+            }
+        )
+
+    monkeypatch.setattr(agent_steward_module, "profile_dataset", fake_profile_dataset)
+
+    agent = DataStewardAgent()
+    response = agent.run("Profile the raw synthetic inforce data and list the data types for MAC, MEC, MAF, and MEF.")
+
+    assert captured["data_path"] == "data/input/synthetic_inforce.csv"
+    assert "MAC — float64 — nulls: 0" in response
 
 
 def test_actuary_agent_runs_explicit_sweep_without_mapping_confirmation(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
 
     captured = {}
 
@@ -94,11 +150,51 @@ def test_actuary_agent_runs_explicit_sweep_without_mapping_confirmation(tmp_path
     assert agent.latest_output_paths_by_depth == {1: "data/output/sweep_summary_latest_1.csv"}
 
 
+def test_actuary_agent_ignores_trailing_calculation_phrase_when_extracting_columns(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    captured = {}
+
+    def fake_run_dimensional_sweep(**kwargs):
+        captured.update(kwargs)
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "Dimensions": "Gender=F",
+                        "AE_Ratio_Count": 1.2,
+                        "AE_Ratio_Amount": 1.4,
+                        "AE_Count_CI": [0.8, 1.8],
+                        "AE_Amount_CI": [0.9, 2.0],
+                    }
+                ],
+                "depth": 1,
+                "output_path": "data/output/sweep_summary_1_gender_smoker_risk_class.csv",
+                "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
+            }
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_actuary_module, "run_dimensional_sweep", fake_run_dimensional_sweep)
+
+    agent = ActuaryAgent()
+    response = agent.run(
+        "Run a 1-way dimensional sweep on Gender, Smoker and Risk Class and calculate the A/E ratio by Count and Amount."
+    )
+
+    assert "requested column(s) not found" not in response
+    assert captured["selected_columns"] == ["Gender", "Smoker", "Risk_Class"]
+
+
 def test_actuary_agent_includes_ranked_table_and_top_ranked_summary(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
 
     captured = {}
 
@@ -162,8 +258,8 @@ def test_actuary_agent_includes_ranked_table_and_top_ranked_summary(tmp_path, mo
 def test_actuary_agent_supports_sum_mac_ranking(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
 
     captured = {}
 
@@ -201,8 +297,8 @@ def test_actuary_agent_supports_sum_mac_ranking(tmp_path, monkeypatch):
 def test_actuary_agent_recognizes_two_dimensional_wording(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
 
     captured = {}
 
@@ -241,8 +337,8 @@ def test_actuary_agent_recognizes_two_dimensional_wording(tmp_path, monkeypatch)
 def test_actuary_agent_tracks_depth_specific_aliases_across_runs(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
 
     payloads = iter(
         [
@@ -283,8 +379,8 @@ def test_actuary_agent_tracks_depth_specific_aliases_across_runs(tmp_path, monke
 def test_actuary_agent_returns_missing_column_guidance_for_unprepared_feature(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    analysis_path = output_dir / "analysis_inforce.csv"
-    analysis_path.write_text(FIXTURE_PATH.read_text())
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
 
     monkeypatch.chdir(tmp_path)
     agent = ActuaryAgent()
@@ -295,6 +391,89 @@ def test_actuary_agent_returns_missing_column_guidance_for_unprepared_feature(tm
 
     assert "requested column(s) not found" in response
     assert "Run Data Steward first" in response
+
+
+def test_actuary_agent_extracts_structured_filters_deterministically(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    captured = {}
+
+    def fake_run_dimensional_sweep(**kwargs):
+        captured.update(kwargs)
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "Dimensions": "Gender=F",
+                        "Sum_MAC": 2,
+                        "AE_Ratio_Count": 1.1,
+                        "AE_Ratio_Amount": 1.0,
+                        "AE_Count_CI": [0.7, 1.6],
+                        "AE_Amount_CI": [0.6, 1.5],
+                    }
+                ],
+                "depth": 1,
+                "output_path": "data/output/sweep_summary_1_gender.csv",
+                "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
+            }
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_actuary_module, "run_dimensional_sweep", fake_run_dimensional_sweep)
+
+    agent = ActuaryAgent()
+    response = agent.run("Run a 1-way dimensional sweep on Gender where Duration < 5 and Smoker = Yes.")
+
+    assert "with filters Duration < 5, Smoker = Yes" in response
+    assert captured["filters"] == [
+        {"column": "Duration", "operator": "<", "value": 5},
+        {"column": "Smoker", "operator": "=", "value": "Yes"},
+    ]
+
+
+def test_actuary_agent_surfaces_graceful_invalid_filter_column_error(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        agent_actuary_module,
+        "run_dimensional_sweep",
+        lambda **kwargs: json.dumps(
+            {
+                "error": "Column 'State' not found.",
+                "available_columns": ["Duration", "Gender", "Issue_Age", "Smoker"],
+                "suggested_columns": ["Issue_Age", "Duration"],
+            }
+        ),
+    )
+
+    agent = ActuaryAgent()
+    response = agent.run("Run a 1-way dimensional sweep on Gender where State = California.")
+
+    assert "Column 'State' not found." in response
+    assert "Try one of these instead: `Issue_Age`, `Duration`." in response
+
+
+def test_actuary_agent_uses_llm_route_when_filter_phrase_is_ambiguous(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+    agent = ActuaryAgent()
+    agent.client = object()
+
+    assert agent._deterministic_sweep_route(
+        "Show me the sweep for Smoker, but only for people from California."
+    ) is None
 
 
 def test_analyst_agent_filters_treemap_to_requested_pair(tmp_path, monkeypatch):

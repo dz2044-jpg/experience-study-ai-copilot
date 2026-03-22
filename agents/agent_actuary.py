@@ -1,13 +1,10 @@
 """Lead Actuary Agent: interprets dimensional sweep A/E results."""
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
-
-import pandas as pd
 
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +13,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agents.openai_compat import build_openai_client
 from agents.schemas import DimensionalSweepSchema
+from tools.data_io import (
+    CANONICAL_ANALYSIS_OUTPUT_PATH,
+    get_tabular_columns,
+    resolve_prepared_analysis_path,
+)
 from tools.insight_engine import run_dimensional_sweep
 
 
@@ -46,20 +48,59 @@ You must NEVER ask the user to clarify these columns. Treat these definitions as
 
 TOOL USAGE INSTRUCTIONS (DIMENSIONAL SWEEPS):
 When using the `run_dimensional_sweep` tool, you must strictly map the user's request to the correct `depth` parameter:
-1. Pairwise / 2-Way Sweeps on Multiple Columns: If the user asks for a "2-way sweep" or "pairwise sweep" across 3 or more columns (e.g., A, B, and C), you MUST set `depth=2` and pass all the requested columns into `selected_columns=['A', 'B', 'C']`. The tool will automatically handle calculating the pairs (A×B, A×C, B×C). 
+1. Pairwise / 2-Way Sweeps on Multiple Columns: If the user asks for a "2-way sweep" or "pairwise sweep" across 3 or more columns (e.g., A, B, and C), you MUST set `depth=2` and pass all the requested columns into `selected_columns=['A', 'B', 'C']`. The tool will automatically handle calculating the pairs (A×B, A×C, B×C).
 2. NEVER set `depth=3` or higher just because the user listed 3 columns. Only set `depth=3` when the user explicitly requests a 3-way interaction term.
+3. For simple user filters, emit structured `filters` objects with `column`, `operator`, and `value`. Use only these operators: `=`, `!=`, `>`, `>=`, `<`, `<=`.
+4. Do not generate free-form Pandas query strings.
 
 STRICT ROLE BOUNDARIES & DATA SOURCES:
-1. Your ONLY source of truth for dimensional sweeps is `data/output/analysis_inforce.csv`. You must assume the Data Steward has already prepared this file.
+1. Your ONLY source of truth for dimensional sweeps is the prepared analysis dataset. Prefer `data/output/analysis_inforce.parquet`; if a legacy CSV artifact exists, the tool can still read it.
 2. NO MOONLIGHTING: You are the Lead Actuary, not the Data Steward. You must NEVER attempt to create bands, clean data, or impute missing values.
-3. MISSING COLUMNS: If the user requests a sweep on a column (for example, `Face_Amount_band`) that is missing from `data/output/analysis_inforce.csv`, do not attempt feature engineering. Clearly instruct the user to run Data Steward first to create that feature, then rerun the sweep.
+3. MISSING COLUMNS: If the user requests a sweep on a column (for example, `Face_Amount_band`) that is missing from the prepared analysis dataset, do not attempt feature engineering. Clearly instruct the user to run Data Steward first to create that feature, then rerun the sweep.
 """.strip()
 
 
 class ActuaryAgent:
     """Agent wrapper that routes actuarial questions to dimensional sweep tooling."""
 
-    DEFAULT_ANALYSIS_PATH = "data/output/analysis_inforce.csv"
+    DEFAULT_ANALYSIS_PATH = CANONICAL_ANALYSIS_OUTPUT_PATH
+    FILTER_INTRO_PATTERNS = (
+        r"\bwhere\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+but\b|,?\s+to\b|[?.]|$)",
+        r"\bonly\s+for\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+but\b|,?\s+to\b|[?.]|$)",
+        r"\bwith\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+but\b|,?\s+to\b|[?.]|$)",
+    )
+    TEXT_OPERATOR_MAP = {
+        "greater than or equal to": ">=",
+        "less than or equal to": "<=",
+        "not equal to": "!=",
+        "equal to": "=",
+        "greater than": ">",
+        "less than": "<",
+        "at least": ">=",
+        "at most": "<=",
+        "equals": "=",
+        "over": ">",
+        "under": "<",
+        "is not": "!=",
+        "is": "=",
+        "not": "!=",
+    }
+    COLUMN_SEGMENT_STOP_PATTERN = (
+        r",?\s+then\b|"
+        r",?\s+rank\b|"
+        r",?\s+sort\b|"
+        r",?\s+using\b|"
+        r",?\s+with\b|"
+        r",?\s+where\b|"
+        r",?\s+only\b|"
+        r",?\s+but\b|"
+        r",?\s+calculate\b|"
+        r",?\s+show\b|"
+        r",?\s+summari(?:ze|se)\b|"
+        r",?\s+interpret\b|"
+        r",?\s+to\b|"
+        r"[?.]|$"
+    )
 
     def __init__(
         self,
@@ -136,6 +177,19 @@ class ActuaryAgent:
         """Escape pipes so cohort labels render correctly inside markdown tables."""
         return str(value).replace("|", "\\|")
 
+    @staticmethod
+    def _normalize_column_name(name: str) -> str:
+        """Normalize column names for case-insensitive matching."""
+        normalized = re.sub(r"[^a-z0-9]+", "_", name.strip().lower())
+        return re.sub(r"_+", "_", normalized).strip("_")
+
+    @classmethod
+    def _resolve_column_token(cls, token: str, available_columns: list[str]) -> Optional[str]:
+        """Resolve a free-form token to a concrete dataset column."""
+        cleaned_token = re.sub(r"^(?:the\s+column\s+|column\s+)", "", token.strip(), flags=re.IGNORECASE)
+        column_lookup = {cls._normalize_column_name(column): column for column in available_columns}
+        return column_lookup.get(cls._normalize_column_name(cleaned_token))
+
     def _build_ranked_cohort_table(self, rows: list[dict[str, Any]]) -> str:
         """Render the top-ranked cohorts as a markdown table."""
         table_rows = rows[:10]
@@ -195,12 +249,6 @@ class ActuaryAgent:
             if isinstance(latest_depth_output_path, str) and latest_depth_output_path.strip():
                 self.latest_output_paths_by_depth[depth] = latest_depth_output_path
 
-    @staticmethod
-    def _normalize_column_name(name: str) -> str:
-        """Normalize column names for case-insensitive matching."""
-        normalized = re.sub(r"[^a-z0-9]+", "_", name.strip().lower())
-        return re.sub(r"_+", "_", normalized).strip("_")
-
     @classmethod
     def _is_explicit_sweep_request(cls, user_message: str) -> bool:
         """Identify requests that should deterministically execute the sweep tool."""
@@ -251,7 +299,10 @@ class ActuaryAgent:
     def _extract_sort_by(user_message: str) -> str:
         """Map ranking phrases to supported sort columns."""
         msg = user_message.lower()
-        explicit_match = re.search(r"\b(ae_ratio_amount|ae_ratio_count|sum_mac|sum_moc|sum_mec|sum_maf|sum_mef)\b", msg)
+        explicit_match = re.search(
+            r"\b(ae_ratio_amount|ae_ratio_count|sum_mac|sum_moc|sum_mec|sum_maf|sum_mef)\b",
+            msg,
+        )
         if explicit_match:
             explicit_map = {
                 "ae_ratio_amount": "AE_Ratio_Amount",
@@ -272,21 +323,25 @@ class ActuaryAgent:
         return "AE_Ratio_Amount"
 
     @classmethod
-    def _load_analysis_columns(cls, data_path: str) -> Optional[list[str]]:
+    def _load_analysis_columns(cls, data_path: str) -> tuple[Optional[list[str]], str]:
         """Read available columns from the prepared analysis dataset."""
-        path = Path(data_path)
-        if not path.exists():
-            return None
-        df = pd.read_csv(path, nrows=0)
-        return list(df.columns)
+        resolved_path = resolve_prepared_analysis_path(data_path)
+        if not resolved_path.exists():
+            return (None, str(resolved_path))
+        return (get_tabular_columns(str(resolved_path)), str(resolved_path))
 
     @classmethod
-    def _extract_requested_columns(cls, user_message: str, available_columns: list[str]) -> tuple[Optional[list[str]], list[str]]:
+    def _extract_requested_columns(
+        cls,
+        user_message: str,
+        available_columns: list[str],
+    ) -> tuple[Optional[list[str]], list[str]]:
         """Parse explicit requested dimensions from phrases like 'on X, Y' or 'between A, B, and C'."""
         patterns = [
-            r"\bbetween\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+with\b|,?\s+where\b|,?\s+to\b|[?.]|$)",
-            r"\bacross\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+with\b|,?\s+where\b|,?\s+to\b|[?.]|$)",
-            r"\bon\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+with\b|,?\s+where\b|,?\s+to\b|[?.]|$)",
+            rf"\bbetween\s+(.+?)(?:{cls.COLUMN_SEGMENT_STOP_PATTERN})",
+            rf"\bacross\s+(.+?)(?:{cls.COLUMN_SEGMENT_STOP_PATTERN})",
+            rf"\bon\s+(.+?)(?:{cls.COLUMN_SEGMENT_STOP_PATTERN})",
+            rf"\bfor\s+(.+?)(?:{cls.COLUMN_SEGMENT_STOP_PATTERN})",
         ]
         requested_segment: Optional[str] = None
         for pattern in patterns:
@@ -307,14 +362,10 @@ class ActuaryAgent:
             if token.strip(" `.")
         ]
 
-        column_lookup = {cls._normalize_column_name(col): col for col in available_columns}
         matched: list[str] = []
         missing: list[str] = []
         for token in tokens:
-            normalized = cls._normalize_column_name(token)
-            if not normalized:
-                continue
-            resolved = column_lookup.get(normalized)
+            resolved = cls._resolve_column_token(token, available_columns)
             if resolved:
                 if resolved not in matched:
                     matched.append(resolved)
@@ -323,25 +374,187 @@ class ActuaryAgent:
 
         return (matched or None, missing)
 
+    @classmethod
+    def _parse_scalar_value(cls, raw_value: str) -> str | int | float:
+        """Coerce a filter value to int/float when possible, otherwise keep as string."""
+        value = raw_value.strip().strip("`")
+        if (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
+            value = value[1:-1]
+
+        if re.fullmatch(r"-?\d+", value):
+            return int(value)
+        if re.fullmatch(r"-?\d+\.\d+", value):
+            return float(value)
+        return value
+
+    @classmethod
+    def _parse_filter_clause(
+        cls,
+        clause: str,
+        available_columns: list[str],
+    ) -> Optional[dict[str, Any]]:
+        """Parse a simple natural-language filter into the structured tool format."""
+        cleaned_clause = clause.strip(" .")
+        if not cleaned_clause:
+            return None
+
+        symbolic_match = re.match(r"^(?P<column>.+?)\s*(?P<operator>>=|<=|!=|=|>|<)\s*(?P<value>.+)$", cleaned_clause)
+        if symbolic_match:
+            column = cls._resolve_column_token(symbolic_match.group("column"), available_columns)
+            if not column:
+                raw_column = re.sub(
+                    r"^(?:the\s+column\s+|column\s+)",
+                    "",
+                    symbolic_match.group("column").strip(),
+                    flags=re.IGNORECASE,
+                )
+                return {
+                    "column": raw_column,
+                    "operator": symbolic_match.group("operator"),
+                    "value": cls._parse_scalar_value(symbolic_match.group("value")),
+                }
+            return {
+                "column": column,
+                "operator": symbolic_match.group("operator"),
+                "value": cls._parse_scalar_value(symbolic_match.group("value")),
+            }
+
+        for text_operator, symbol in sorted(cls.TEXT_OPERATOR_MAP.items(), key=lambda item: len(item[0]), reverse=True):
+            pattern = rf"^(?P<column>.+?)\s+{re.escape(text_operator)}\s+(?P<value>.+)$"
+            text_match = re.match(pattern, cleaned_clause, flags=re.IGNORECASE)
+            if not text_match:
+                continue
+            column = cls._resolve_column_token(text_match.group("column"), available_columns)
+            if not column:
+                raw_column = re.sub(
+                    r"^(?:the\s+column\s+|column\s+)",
+                    "",
+                    text_match.group("column").strip(),
+                    flags=re.IGNORECASE,
+                )
+                return {
+                    "column": raw_column,
+                    "operator": symbol,
+                    "value": cls._parse_scalar_value(text_match.group("value")),
+                }
+            return {
+                "column": column,
+                "operator": symbol,
+                "value": cls._parse_scalar_value(text_match.group("value")),
+            }
+
+        return None
+
+    @classmethod
+    def _extract_structured_filters(
+        cls,
+        user_message: str,
+        available_columns: list[str],
+    ) -> tuple[list[dict[str, Any]], bool, bool]:
+        """
+        Parse simple filter language into structured filter clauses.
+
+        Returns (filters, saw_filter_language, ambiguous).
+        """
+        if re.search(r"\bat least\s+\d+\s+deaths?\b", user_message, flags=re.IGNORECASE):
+            min_mac_only = re.sub(
+                r"\bwith\s+at least\s+\d+\s+deaths?\b",
+                "",
+                user_message,
+                flags=re.IGNORECASE,
+            )
+        else:
+            min_mac_only = user_message
+
+        for pattern in cls.FILTER_INTRO_PATTERNS:
+            match = re.search(pattern, min_mac_only, flags=re.IGNORECASE)
+            if not match:
+                continue
+
+            filter_segment = match.group(1).strip()
+            if not filter_segment:
+                return ([], True, True)
+
+            clauses = [
+                clause.strip(" ,.")
+                for clause in re.split(r"\band\b", filter_segment, flags=re.IGNORECASE)
+                if clause.strip(" ,.")
+            ]
+            parsed_filters: list[dict[str, Any]] = []
+            for clause in clauses:
+                parsed = cls._parse_filter_clause(clause, available_columns)
+                if not parsed:
+                    return ([], True, True)
+                parsed_filters.append(parsed)
+            return (parsed_filters, True, False)
+
+        return ([], False, False)
+
+    @staticmethod
+    def _format_available_columns(columns: list[str], limit: int = 8) -> str:
+        """Format a short available-column preview for recovery guidance."""
+        if not columns:
+            return ""
+        preview = ", ".join(f"`{column}`" for column in columns[:limit])
+        suffix = "" if len(columns) <= limit else ", ..."
+        return preview + suffix
+
+    def _summarize_sweep_error(self, payload: dict[str, Any]) -> str:
+        """Convert structured tool errors into user-facing actuarial guidance."""
+        message = f"Unable to complete sweep: {payload.get('error', 'Unknown error.')}"
+        suggested_columns = payload.get("suggested_columns") or []
+        available_columns = payload.get("available_columns") or []
+
+        guidance: list[str] = [message]
+        if suggested_columns:
+            guidance.append(
+                "Try one of these instead: " + ", ".join(f"`{column}`" for column in suggested_columns) + "."
+            )
+        elif available_columns:
+            guidance.append(
+                "Available prepared-analysis columns include "
+                + self._format_available_columns(available_columns)
+                + "."
+            )
+
+        if payload.get("error", "").startswith("Column '"):
+            guidance.append(
+                "If you expected that field to exist, run Data Steward first to create or prepare it, then rerun the sweep."
+            )
+
+        return " ".join(guidance)
+
     def _deterministic_sweep_route(self, user_message: str) -> Optional[str]:
         """Run explicit sweep requests locally so the model cannot ask for known A/E mappings."""
         if not self._is_explicit_sweep_request(user_message):
             return None
 
         self._emit_status("Lead Actuary: validating the prepared analysis dataset.")
-        available_columns = self._load_analysis_columns(self.DEFAULT_ANALYSIS_PATH)
+        available_columns, resolved_path = self._load_analysis_columns(self.DEFAULT_ANALYSIS_PATH)
         if available_columns is None:
             return (
-                "Unable to complete sweep: `data/output/analysis_inforce.csv` is missing. "
+                f"Unable to complete sweep: `{resolved_path}` is missing. "
                 "Run Data Steward first to prepare the analysis dataset, then rerun the sweep."
             )
 
         selected_columns, missing_columns = self._extract_requested_columns(user_message, available_columns)
         if missing_columns:
-            missing_list = ", ".join(f"`{col}`" for col in missing_columns)
+            missing_list = ", ".join(f"`{column}`" for column in missing_columns)
             return (
-                f"Unable to complete sweep: requested column(s) not found in `{self.DEFAULT_ANALYSIS_PATH}`: {missing_list}. "
+                f"Unable to complete sweep: requested column(s) not found in `{resolved_path}`: {missing_list}. "
                 "Run Data Steward first to create those features, then rerun the sweep."
+            )
+
+        filters, saw_filter_language, ambiguous_filters = self._extract_structured_filters(
+            user_message,
+            available_columns,
+        )
+        if saw_filter_language and ambiguous_filters:
+            if self.client:
+                return None
+            return (
+                "Unable to deterministically parse the requested filter. "
+                "Please rephrase it using a simple form such as `Issue_Age > 50` or `Smoker = Yes`."
             )
 
         depth = self._extract_depth(user_message)
@@ -352,6 +565,7 @@ class ActuaryAgent:
         self._emit_status(f"Lead Actuary: running a {depth}-way dimensional sweep.")
         sweep = run_dimensional_sweep(
             depth=depth,
+            filters=filters,
             selected_columns=selected_columns,
             min_mac=min_mac,
             top_n=top_n,
@@ -360,9 +574,14 @@ class ActuaryAgent:
         )
 
         selected_label = ", ".join(selected_columns) if selected_columns else "auto-detected dimensions"
+        filter_label = ""
+        if filters:
+            filter_label = " with filters " + ", ".join(
+                f"{filter_spec['column']} {filter_spec['operator']} {filter_spec['value']}" for filter_spec in filters
+            )
         context = (
             f"{depth}-way dimensional sweep complete on the prepared analysis dataset "
-            f"using {selected_label}, ranked by {sort_by}."
+            f"using {selected_label}{filter_label}, ranked by {sort_by}."
         )
         self._emit_status("Lead Actuary: summarizing the sweep results.")
         return self._summarize_sweep(sweep, context, sort_by)
@@ -371,7 +590,7 @@ class ActuaryAgent:
         self._record_sweep_artifacts(result_json)
         payload = json.loads(result_json)
         if "error" in payload:
-            return f"Unable to complete sweep: {payload['error']}"
+            return self._summarize_sweep_error(payload)
         rows = payload.get("results", [])
         if not rows:
             return "No cohorts met the requested visibility threshold."
@@ -492,7 +711,6 @@ class ActuaryAgent:
                     tool_choice="auto",
                 )
             except Exception:
-                # Keep deterministic local usability when network/proxy is unavailable.
                 self._emit_status("Lead Actuary: tool-calling is unavailable, falling back to deterministic logic.")
                 return self._fallback_route(user_message)
             message = completion.choices[0].message
@@ -506,7 +724,7 @@ class ActuaryAgent:
                 {
                     "role": "assistant",
                     "content": message.content or "",
-                    "tool_calls": [tc.model_dump() for tc in tool_calls],
+                    "tool_calls": [tool_call.model_dump() for tool_call in tool_calls],
                 }
             )
 

@@ -24,7 +24,7 @@ def test_session_aware_feature_engineering_appends_columns(tmp_path, monkeypatch
     source = tmp_path / "inforce.csv"
     source.write_text(FIXTURE_PATH.read_text())
 
-    output = tmp_path / "analysis_inforce.csv"
+    output = tmp_path / "analysis_inforce.parquet"
     monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
     # Ensure writes in this test are considered "current session".
     monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
@@ -50,7 +50,7 @@ def test_session_aware_feature_engineering_appends_columns(tmp_path, monkeypatch
     )
 
     assert output.exists()
-    df = pd.read_csv(output)
+    df = pd.read_parquet(output)
     assert "Face_Amount_band" in df.columns
     assert "Issue_Age_band" in df.columns
     assert "Risk_Class_regrouped" in df.columns
@@ -110,7 +110,7 @@ def test_create_categorical_bands_supports_xlsx_sheet_input(tmp_path, monkeypatc
         ).to_excel(writer, sheet_name="IgnoreMe", index=False)
         source_df.to_excel(writer, sheet_name="Inforce", index=False)
 
-    output = tmp_path / "analysis_inforce.csv"
+    output = tmp_path / "analysis_inforce.parquet"
     monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
     monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
 
@@ -125,6 +125,28 @@ def test_create_categorical_bands_supports_xlsx_sheet_input(tmp_path, monkeypatc
     )
 
     assert result["success"] is True
-    engineered = pd.read_csv(output)
+    engineered = pd.read_parquet(output)
     assert "Face_Amount_band" in engineered.columns
     assert "IGNORE" not in engineered["Policy_Number"].astype(str).tolist()
+
+
+def test_create_categorical_bands_reads_legacy_prepared_csv_when_parquet_is_missing(tmp_path, monkeypatch):
+    legacy_csv = tmp_path / "analysis_inforce.csv"
+    legacy_csv.write_text(FIXTURE_PATH.read_text())
+    parquet_output = tmp_path / "analysis_inforce.parquet"
+
+    monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(parquet_output))
+    monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
+
+    result = json.loads(
+        data_steward.create_categorical_bands(
+            source_column="Face_Amount",
+            strategy="equal_width",
+            bins=4,
+            source_path=str(parquet_output),
+        )
+    )
+
+    assert result["success"] is True
+    engineered = pd.read_parquet(parquet_output)
+    assert "Face_Amount_band" in engineered.columns

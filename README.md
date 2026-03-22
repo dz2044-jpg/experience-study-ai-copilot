@@ -97,7 +97,7 @@ The system is designed as a staged workflow rather than an unrestricted agent ch
 
 The Data Steward reads a source raw dataset in `.csv`, `.parquet`, or `.xlsx`, profiles it, validates actuarial rules, and writes engineered output to:
 
-- `data/output/analysis_inforce.csv`
+- `data/output/analysis_inforce.parquet`
 
 Guardrails already enforced in code:
 
@@ -109,7 +109,8 @@ Guardrails already enforced in code:
 
 The Lead Actuary runs a deterministic dimensional sweep against:
 
-- `data/output/analysis_inforce.csv`
+- `data/output/analysis_inforce.parquet`
+- legacy `data/output/analysis_inforce.csv` is still readable during migration
 
 The sweep ranks cohorts and writes CSV artifacts to `data/output/`, including:
 
@@ -142,7 +143,7 @@ User
   |
   v
 StudyOrchestrator
-  |-- DATA_PREP  --> DataStewardAgent --> tools/data_steward.py --> data/output/analysis_inforce.csv
+  |-- DATA_PREP  --> DataStewardAgent --> tools/data_steward.py --> data/output/analysis_inforce.parquet
   |-- ANALYSIS   --> ActuaryAgent     --> tools/insight_engine.py --> data/output/sweep_summary*.csv
   |-- VISUALIZE  --> AnalystAgent     --> tools/visualization.py --> data/output/*.html
   |
@@ -242,7 +243,7 @@ The repo uses file artifacts as explicit handoff points between stages.
 
 ### Prepared Analysis Dataset
 
-- `data/output/analysis_inforce.csv`
+- `data/output/analysis_inforce.parquet`
 - engineered dataset created by the steward
 - input to the actuarial sweep engine
 
@@ -274,7 +275,7 @@ Supported runtime controls include:
 
 - `depth`: 1-way, 2-way, or explicit 3-way cohort intersections
 - `selected_columns`: constrain the sweep to named dimensions
-- `filters`: apply pandas-query style row filters before aggregation
+- `filters`: apply structured scalar filters (`column`, `operator`, `value`) before aggregation
 - `min_mac`: visibility floor for minimum actual death count
 - `top_n`: limit the JSON response while keeping full ranked CSV artifacts on disk
 - `sort_by`: rank by `AE_Ratio_Amount`, `AE_Ratio_Count`, or supported aggregate fields

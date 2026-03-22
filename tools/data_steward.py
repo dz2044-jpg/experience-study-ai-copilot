@@ -1,7 +1,8 @@
 """
 Data Steward Agent backend: Deterministic functions for data validation and feature engineering.
 
-CRITICAL: Never overwrite original user-uploaded data. All outputs save to data/output/analysis_inforce.csv.
+CRITICAL: Never overwrite original user-uploaded data. All outputs save to
+data/output/analysis_inforce.parquet.
 """
 
 import json
@@ -12,12 +13,17 @@ from typing import Optional
 
 import pandas as pd
 
-from tools.data_io import load_tabular_input, load_tabular_input_as_strings
+from tools.data_io import (
+    CANONICAL_ANALYSIS_OUTPUT_PATH,
+    load_tabular_input,
+    load_tabular_input_as_strings,
+    resolve_prepared_analysis_path,
+)
 
 # Records the exact time this script is loaded into memory for the chat session.
 _SESSION_START_TIME = time.time()
 
-ANALYSIS_OUTPUT_PATH = "data/output/analysis_inforce.csv"
+ANALYSIS_OUTPUT_PATH = CANONICAL_ANALYSIS_OUTPUT_PATH
 ACTUARIAL_NUMERICS = ["MAC", "MEC", "MAF", "MEF", "MOC"]
 RAW_MISSING_TOKENS = {"", "na", "nan", "null", "none", "n/a"}
 
@@ -39,7 +45,8 @@ def _load_feature_engineering_frame(
     """
     if os.path.exists(output_path) and os.path.getmtime(output_path) >= _SESSION_START_TIME:
         return _load_inforce(output_path)
-    return _load_inforce(source_path, sheet_name=sheet_name)
+    resolved_source_path = resolve_prepared_analysis_path(source_path)
+    return _load_inforce(str(resolved_source_path), sheet_name=sheet_name)
 
 
 def _find_raw_non_numeric_values(data_path: str, sheet_name: Optional[str] = None) -> list[str]:
@@ -262,7 +269,7 @@ def create_categorical_bands(
     bins: Optional[int] = None,
     custom_bins: Optional[list] = None,
     source_path: str = "data/input/synthetic_inforce.csv",
-    output_path: str = "data/output/analysis_inforce.csv",
+    output_path: str = CANONICAL_ANALYSIS_OUTPUT_PATH,
     sheet_name: Optional[str] = None,
 ) -> str:
     """
@@ -271,7 +278,7 @@ def create_categorical_bands(
     Strategies: quantiles (pd.qcut), equal_width (pd.cut), custom (pd.cut with custom_bins).
     Saves to output_path; never overwrites source. Returns JSON success message.
     """
-    src = Path(source_path)
+    src = resolve_prepared_analysis_path(source_path)
     if not src.exists():
         return json.dumps({"error": f"Source file not found: {source_path}"}, indent=2)
 
@@ -326,7 +333,7 @@ def create_categorical_bands(
     # STEP 3: Save and replace output file with appended feature columns.
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_path, index=False)
+    df.to_parquet(output_path, engine="pyarrow", index=False)
 
     result = {
         "success": True,
@@ -340,15 +347,15 @@ def create_categorical_bands(
 def regroup_categorical_features(
     source_column: str,
     mapping_dict: dict[str, str],
-    source_path: str = "data/output/analysis_inforce.csv",
-    output_path: str = "data/output/analysis_inforce.csv",
+    source_path: str = CANONICAL_ANALYSIS_OUTPUT_PATH,
+    output_path: str = CANONICAL_ANALYSIS_OUTPUT_PATH,
     sheet_name: Optional[str] = None,
 ) -> str:
     """
     Create regrouped categorical column using a mapping dictionary.
     Unmapped values are left as-is. Saves to output_path. Returns JSON success message.
     """
-    src = Path(source_path)
+    src = resolve_prepared_analysis_path(source_path)
     if not src.exists() and not Path(ANALYSIS_OUTPUT_PATH).exists():
         return json.dumps({"error": f"Source file not found: {source_path}"}, indent=2)
 
@@ -372,7 +379,7 @@ def regroup_categorical_features(
     # Save and replace output file with appended feature columns.
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_path, index=False)
+    df.to_parquet(output_path, engine="pyarrow", index=False)
 
     result = {
         "success": True,
@@ -399,7 +406,7 @@ if __name__ == "__main__":
             strategy="custom",
             custom_bins=[0, 25, 45, 65, 100],
             source_path=data_path,
-            output_path="data/output/analysis_inforce.csv",
+            output_path=CANONICAL_ANALYSIS_OUTPUT_PATH,
         )
     )
 
@@ -413,7 +420,7 @@ if __name__ == "__main__":
                 "Preferred": "Preferred",
                 "Preferred Plus": "Preferred",
             },
-            source_path="data/output/analysis_inforce.csv",
-            output_path="data/output/analysis_inforce.csv",
+            source_path=CANONICAL_ANALYSIS_OUTPUT_PATH,
+            output_path=CANONICAL_ANALYSIS_OUTPUT_PATH,
         )
     )

@@ -33,7 +33,7 @@ cd /Users/amberwang/Desktop/dzw/experience-study-ai-copilot
 Core files to inspect during UAT:
 
 - `data/input/synthetic_inforce.csv`
-- `data/output/analysis_inforce.csv`
+- `data/output/analysis_inforce.parquet`
 - `data/output/sweep_summary.csv`
 - `data/output/temp_univariate_report.html`
 - `data/output/temp_treemap_report.html`
@@ -68,7 +68,7 @@ Notes:
   Prompt the Copilot:
   `Group Face_Amount into 4 equal-width bands, and then group Issue_Age into 4 equal-width bands.`
 - Expected Pass:
-  Inspect `data/output/analysis_inforce.csv`.
+  Inspect `data/output/analysis_inforce.parquet`.
   Both `Face_Amount_band` and `Issue_Age_band` must exist.
   The second feature-engineering step must append to the current session output instead of overwriting the first derived column.
 
@@ -154,6 +154,35 @@ Notes:
   It should include flattened CI columns required by visualization, such as:
   `AE_Count_CI_Lower`, `AE_Count_CI_Upper`, `AE_Amount_CI_Lower`, and `AE_Amount_CI_Upper`.
 
+### Test 9A: Filter Validation - Numeric
+
+- Action:
+  Prompt the Copilot:
+  `Run a 1-way sweep on Gender where Duration < 5.`
+- Expected Pass:
+  The sweep completes successfully.
+  The results must reflect only rows where `Duration < 5`.
+  The terminal session must not crash or emit a traceback.
+
+### Test 9B: Filter Validation - String
+
+- Action:
+  Prompt the Copilot:
+  `Run a 1-way sweep on Gender where Smoker = Yes.`
+- Expected Pass:
+  The sweep completes successfully.
+  The results must reflect only rows where `Smoker` equals `Yes`.
+  The terminal session must not crash or emit a traceback.
+
+### Test 9C: Filter Validation - Invalid Column
+
+- Action:
+  Prompt the Copilot:
+  `Run a 1-way sweep on Gender where State = California.`
+- Expected Pass:
+  The Copilot politely rejects the request with a controlled missing-column explanation.
+  The response should indicate that `State` is unavailable in the prepared dataset and should not expose a Python traceback.
+
 ## Phase 4: Error Handling & Resilience
 
 ### Test 10: The Bad Feature Check
@@ -191,7 +220,7 @@ Document these explicitly if they appear:
 - the orchestrator misroutes analysis requests as data prep
 - the browser-open step fails even though the HTML file is generated
 - the agent responds with a generic help message instead of using the pending continuation state
-- a later tool call overwrites `analysis_inforce.csv` incorrectly and drops previously engineered columns
+- a later tool call overwrites `analysis_inforce.parquet` incorrectly and drops previously engineered columns
 
 ## Recommended UAT Run Order
 
