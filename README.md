@@ -12,6 +12,15 @@ That split keeps the math reproducible and auditable while still giving users a 
 How to open the stakeholder deck:
 - Open [`docs/stakeholder_presentation.html`](docs/stakeholder_presentation.html) directly in a browser. No server, package install, or external assets are required.
 
+## Why It Matters To The Business
+
+From a business perspective, the project is aimed at turning the actuarial experience study from a slow, specialist-driven workflow into a scalable and auditable operating capability.
+
+- `Scaling expertise`: deterministic data-science workflows become available through a constrained natural-language interface rather than a small set of Python power users
+- `Speed-to-insight`: actuaries can move from profiling to sweeps to reporting in one session, with DuckDB-backed aggregation and artifact-driven handoffs reducing manual downtime
+- `Governance`: the LLM routes work, but deterministic Python tools own the validation logic, A/E math, and report artifacts used for review
+- `Strategic reuse`: the same “Muscles and Brains” pattern can be reused for adjacent insurance workflows such as pricing, reserving, or claims analytics
+
 ## What This Repo Is For
 
 This repository is for teams who want to:
@@ -185,6 +194,26 @@ experience-study-ai-copilot/
 ├── main.py
 └── tests/
 ```
+
+## Current State vs Roadmap
+
+### Current State
+
+The current codebase already supports:
+
+- DuckDB-backed dimensional sweeps in [`tools/insight_engine.py`](tools/insight_engine.py)
+- `data/output/analysis_inforce.parquet` as the canonical prepared analysis artifact, with legacy CSV compatibility where needed
+- a combined browser report from [`tools/visualization.py`](tools/visualization.py) that includes the forest plot, detail table, and treemap
+- continuation-based orchestration that queues the next logical workflow step
+- token-streamed assistant responses in [`main.py`](main.py) for the Streamlit UI
+
+### Explicit Roadmap
+
+These are future-looking ideas, not current shipped features:
+
+- trend analysis over time rather than only point-in-time ranked sweeps
+- automated executive or actuarial memorandum drafting from the session artifacts
+- direct warehouse connectivity for prepared-data workflows instead of relying only on local files
 
 ## Setup And Run
 

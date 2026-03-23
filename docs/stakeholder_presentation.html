@@ -715,48 +715,48 @@
       <section class="slide active" data-title="Problem & Audience">
         <div class="left">
           <div class="kicker">Slide 1</div>
-          <h1>This is not a chatbot. It is an orchestration engine.</h1>
+          <h1>Turn the experience study into a scalable, auditable workflow.</h1>
           <div class="accent-line"></div>
           <p>
-            The presentation now leads with the software architecture: a supervisor, three specialist agents, schema-bound tool calls, and deterministic Python tools that own every quantitative output.
+            The business goal is straightforward: reduce the time, specialist bottlenecks, and spreadsheet risk involved in traditional experience-study work without giving up actuarial control.
           </p>
           <p>
-            That matters because technical stakeholders do not need another generic “AI can help” pitch. They need to see where routing happens, where tool permissions live, and where the actuarial math is actually computed.
+            This system does that by wrapping deterministic data-science workflows in a constrained agent interface, so more people can safely run the process while still tracing every quantitative output back to code and artifacts.
           </p>
           <div class="hero-grid">
             <div class="stat">
-              <span class="label">Control Plane</span>
-              <strong>1 Orchestrator</strong>
-              Classifies intent, tracks continuation state, and decides which specialist should act next.
+              <span class="label">Scaling Expertise</span>
+              <strong>Natural Language</strong>
+              More actuaries can trigger profiling, sweeps, and reporting without being Python specialists.
             </div>
             <div class="stat">
-              <span class="label">Execution Layer</span>
-              <strong>3 Specialist Agents</strong>
-              Steward, Actuary, and Analyst each own a narrow responsibility boundary.
+              <span class="label">Operational Efficiency</span>
+              <strong>One Guided Flow</strong>
+              Profiling, analysis, and reporting happen in one session with less manual handoff time.
             </div>
             <div class="stat">
-              <span class="label">Deterministic Core</span>
-              <strong>7 Key Modules</strong>
-              The tools and schemas on disk define what the agents are allowed to do.
+              <span class="label">Governance</span>
+              <strong>Auditable Artifacts</strong>
+              The workflow leaves behind prepared datasets, sweep outputs, and HTML reports for review.
             </div>
           </div>
         </div>
         <div class="right">
           <div class="diagram">
-            <div class="diagram-title">Architecture at a glance</div>
+            <div class="diagram-title">Business payoff, tied to architecture</div>
             <div class="card-grid two">
               <div class="card">
-                <h3>Orchestrator</h3>
-                <p><code>agents/orchestrator.py</code> routes <code>DATA_PREP</code>, <code>ANALYSIS</code>, <code>VISUALIZE</code>, and <code>CONTINUE</code>.</p>
+                <h3>Less specialist bottleneck</h3>
+                <p>Users get a guided interface instead of a collection of ad hoc scripts and manual steps.</p>
               </div>
               <div class="card">
-                <h3>Tool contracts</h3>
-                <p><code>agents/schemas.py</code> constrains the arguments each specialist can pass into deterministic tools.</p>
+                <h3>Less spreadsheet risk</h3>
+                <p>Validation rules, A/E math, and report generation live in deterministic Python rather than human copy-paste workflows.</p>
               </div>
             </div>
             <div class="note" style="margin-top: 14px;">
-              <span class="label">Key technical claim</span>
-              <p>The system is useful because it makes the LLM operationally narrow and makes the deterministic layer operationally visible.</p>
+              <span class="label">What makes this credible</span>
+              <p>The business story only works because the architecture is constrained: the LLM routes and narrates, while the tool layer owns the actual actuarial work.</p>
             </div>
             <div class="code-sample">
 <span class="muted">Key modules</span>
@@ -775,63 +775,60 @@ tools/visualization.py
       <section class="slide" data-title="Why Multi-Agent">
         <div class="left">
           <div class="kicker">Slide 2</div>
-          <h2>The orchestrator is the system boundary, not a convenience wrapper.</h2>
+          <h2>The architecture makes the business value operationally real.</h2>
           <p>
-            The supervisor is where the product behaves like an engine rather than a chat session. It classifies intent, stores pending next steps, and routes follow-up confirmations without losing workflow state.
+            This is not a generic assistant with broad access. It is a constrained orchestration engine: one supervisor, three specialist agents, schema-bound tool calls, and explicit handoffs between deterministic stages.
           </p>
           <div class="route-grid">
             <div class="route-pill">
-              <strong>GENERAL</strong>
-              Non-execution guidance and fallback help.
+              <strong>1 Orchestrator</strong>
+              Converts natural language into one controlled execution path.
             </div>
             <div class="route-pill">
-              <strong>DATA_PREP</strong>
-              Routes into the Data Steward.
+              <strong>3 Specialists</strong>
+              Steward, Actuary, and Analyst each own a narrow job boundary.
             </div>
             <div class="route-pill">
-              <strong>ANALYSIS</strong>
-              Routes into the Lead Actuary.
+              <strong>Schema Contracts</strong>
+              Tool arguments are constrained before execution.
             </div>
             <div class="route-pill">
-              <strong>VISUALIZE</strong>
-              Routes into the Analyst.
+              <strong>Deterministic Tools</strong>
+              Python and DuckDB own the calculations and file writes.
             </div>
             <div class="route-pill">
-              <strong>CONTINUE</strong>
-              Advances the queued next step.
+              <strong>Artifacts</strong>
+              Prepared data, sweep outputs, and reports remain inspectable on disk.
             </div>
           </div>
           <div class="chip-list">
-            <span class="chip">last_active_agent</span>
-            <span class="chip">pending_analysis_prompt</span>
-            <span class="chip">pending_visualization_prompt</span>
-            <span class="chip">latest_analysis_output_path</span>
+            <span class="chip">scale expertise safely</span>
+            <span class="chip">reduce context switching</span>
+            <span class="chip">preserve audit trail</span>
+            <span class="chip">reusable blueprint</span>
           </div>
         </div>
         <div class="right">
           <div class="diagram">
-            <div class="diagram-title">What makes it an engine</div>
+            <div class="diagram-title">Why technical stakeholders should care</div>
             <div class="card-grid two">
               <div class="card">
-                <span class="label">Input</span>
-                <h3>User intent</h3>
-                <p>The orchestrator receives natural language, but converts it into a single execution path.</p>
+                <span class="label">Operational efficiency</span>
+                <h3>DuckDB + Parquet</h3>
+                <p>The current implementation uses DuckDB-backed sweeps over a canonical prepared Parquet artifact for fast repeatable aggregation.</p>
               </div>
               <div class="card">
-                <span class="label">Output</span>
-                <h3>Queued next step</h3>
-                <p>It pauses after major stages and stores what should happen next if the user says “continue”.</p>
+                <span class="label">Operator experience</span>
+                <h3>Guided multi-step flow</h3>
+                <p>Continuation prompts, queued next steps, and token streaming reduce friction between profiling, analysis, and reporting.</p>
               </div>
             </div>
             <div class="code-sample">
-if intent == "DATA_PREP":
-    return self._route_to_steward(user_query)
-if intent == "ANALYSIS":
-    return self._route_to_actuary(user_query)
-if intent == "VISUALIZE":
-    return self._route_to_analyst(user_query)
-if intent == "CONTINUE":
-    return self._handle_continue()
+Business story
+  -> constrained multi-agent routing
+  -> deterministic computation
+  -> artifact-based audit trail
+  -> faster review and decision support
             </div>
           </div>
         </div>
@@ -946,15 +943,15 @@ AnalystAgent
           <div class="trust-stack">
             <div class="guardrail">
               <span class="label">Data Steward tool</span>
-              <p>Profiles types, validates MAC/MEC/MOC and COLA logic, and writes <code>analysis_inforce.csv</code> without overwriting raw input.</p>
+              <p>Profiles types, validates MAC/MEC/MOC and COLA logic, and writes <code>analysis_inforce.parquet</code> without overwriting raw input.</p>
             </div>
             <div class="guardrail">
               <span class="label">Insight Engine tool</span>
-              <p>Computes dimensional sweeps, A/E ratios, and Bayesian confidence intervals with deterministic Python and SciPy.</p>
+              <p>Computes DuckDB-backed dimensional sweeps, A/E ratios, and Bayesian confidence intervals with deterministic Python and SciPy.</p>
             </div>
             <div class="guardrail">
               <span class="label">Visualization tool</span>
-              <p>Reads aggregated sweep outputs and writes standalone HTML artifacts rather than improvising charts from arbitrary input.</p>
+              <p>Reads aggregated sweep outputs and writes a combined A/E report with forest plot, detail table, and treemap.</p>
             </div>
             <div class="guardrail">
               <span class="label">Agent boundary</span>
@@ -993,7 +990,7 @@ Amount fallback
           <div class="artifact-grid">
             <div class="artifact">
               <span class="label">Steward output</span>
-              <strong>analysis_inforce.csv</strong>
+              <strong>analysis_inforce.parquet</strong>
               Prepared dataset used by the actuary tool layer as the analysis source of truth.
             </div>
             <div class="artifact">
@@ -1011,7 +1008,7 @@ Amount fallback
         <div class="right">
           <div class="diagram">
             <div class="diagram-title">Agent-to-agent handoff on disk</div>
-            <div class="code-sample">analysis_inforce.csv
+            <div class="code-sample">analysis_inforce.parquet
   produced by DataStewardAgent tools
 
 sweep_summary.csv
@@ -1072,32 +1069,32 @@ temp_treemap_source_gender_smoker.csv</div>
       <section class="slide" data-title="Value & Roadmap">
         <div class="left">
           <div class="kicker">Slide 8</div>
-          <h2>The technical narrative is now concrete: agent roles, tool surfaces, and inspectable handoffs.</h2>
+          <h2>Current state is already useful. The roadmap extends the same blueprint.</h2>
           <p>
-            This framing makes the presentation stronger for technical stakeholders because it shows a bounded orchestration engine with explicit modules, not an abstract “AI assistant” story.
+            The current product story is grounded in shipped capabilities: constrained agent routing, DuckDB-backed sweeps, Parquet-based prepared data, combined HTML reporting, artifact-based auditability, and streamed UI responses.
           </p>
           <ul>
-            <li>Developers can map each agent to the exact tools and files it controls.</li>
-            <li>Actuaries can see exactly where validation, sweep math, and visualization boundaries sit.</li>
-            <li>Stakeholders can understand why the architecture is more trustworthy than a general-purpose chatbot.</li>
+            <li>Current state: faster execution, clearer governance, and a reusable operating model for experience-study work.</li>
+            <li>Current state: a technical architecture that reviewers can inspect module by module.</li>
+            <li>Roadmap: extend the same pattern into more analytical depth and higher-value reporting outputs.</li>
           </ul>
         </div>
         <div class="right">
           <div class="roadmap-grid">
             <div class="roadmap">
               <span class="label">Now</span>
-              <h3>Architecture-forward deck</h3>
-              <p>The presentation now leads with orchestration, tool calls, and deterministic module ownership.</p>
+              <h3>Shipped foundation</h3>
+              <p>DuckDB sweeps, Parquet prepared data, combined A/E reports, continuation-based orchestration, and streamed UI responses.</p>
             </div>
             <div class="roadmap">
-              <span class="label">Next</span>
-              <h3>Technical review</h3>
-              <p>Use the deck to walk engineers and actuaries through role boundaries, artifacts, and test-backed guarantees.</p>
+              <span class="label">Roadmap</span>
+              <h3>Deeper analysis</h3>
+              <p>Extend the insight engine beyond ranked point-in-time sweeps into trend analysis across time.</p>
             </div>
             <div class="roadmap">
-              <span class="label">Later</span>
-              <h3>Production hardening</h3>
-              <p>Expand UI polish, monitoring, and deployment controls while keeping the tool-owned computation model intact.</p>
+              <span class="label">Roadmap</span>
+              <h3>Higher-value outputs</h3>
+              <p>Add automated executive memorandum drafting and direct warehouse connectivity while preserving the same deterministic-core pattern.</p>
             </div>
           </div>
           <div class="note" style="margin-top: 18px;">
