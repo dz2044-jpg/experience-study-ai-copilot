@@ -35,8 +35,7 @@ Core files to inspect during UAT:
 - `data/input/synthetic_inforce.csv`
 - `data/output/analysis_inforce.parquet`
 - `data/output/sweep_summary.csv`
-- `data/output/temp_univariate_report.html`
-- `data/output/temp_treemap_report.html`
+- `data/output/combined_ae_report_<...>.html`
 
 ## Pass / Fail Recording Template
 
@@ -219,8 +218,9 @@ Notes:
   Prompt the Copilot:
   `Generate a treemap of the 2-way sweep we just ran.`
 - Expected Pass:
-  The Analyst reads `data/output/sweep_summary.csv`, parses the `Dimensions` strings, and writes a treemap artifact to:
-  `data/output/temp_treemap_report.html`
+  The Analyst reads `data/output/sweep_summary.csv`, parses the `Dimensions` strings, and writes a combined report artifact to:
+  `data/output/combined_ae_report_<...>.html`
+  The generated HTML contains the forest plot, detail table, and treemap together.
   If browser auto-open is blocked by the environment, file creation still counts as the required artifact-level success.
 
 ## Known Caveats to Record During UAT

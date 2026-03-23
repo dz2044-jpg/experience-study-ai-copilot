@@ -171,12 +171,8 @@ class DimensionalSweepSchema(BaseModel):
 
 
 class VisualizationSchema(BaseModel):
-    """Schema for visualization tool calls (scatter vs treemap)."""
+    """Schema for combined visualization tool calls."""
 
-    chart_type: Literal["scatter", "treemap"] = Field(
-        ...,
-        description="Visualization type to generate: 'scatter' (univariate A/E) or 'treemap' (hierarchical risk view).",
-    )
     metric: Literal["count", "amount"] = Field(
         default="amount",
         description="Metric to visualize: 'count' uses MAC/MEC, 'amount' uses MAF/MEF.",

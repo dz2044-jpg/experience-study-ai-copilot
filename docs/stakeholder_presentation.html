@@ -872,8 +872,7 @@ if intent == "CONTINUE":
               <strong>Visualization and communication layer</strong>
               <p>Reads sweep summaries and generates browser artifacts. It never visualizes raw inforce data directly.</p>
               <div class="chip-list">
-                <span class="chip">generate_univariate_report</span>
-                <span class="chip">generate_treemap_report</span>
+                <span class="chip">generate_combined_report</span>
                 <span class="chip">metric=count|amount</span>
               </div>
             </div>
@@ -933,8 +932,7 @@ ActuaryAgent
   -> run_dimensional_sweep
 
 AnalystAgent
-  -> generate_univariate_report
-  -> generate_treemap_report</div>
+  -> generate_combined_report</div>
         </div>
       </section>
 
@@ -1022,10 +1020,9 @@ sweep_summary.csv
 sweep_summary_1_gender_smoker.csv
   run-specific actuarial artifact
 
-temp_univariate_report.html
+combined_ae_report_&lt;id&gt;.html
   produced by AnalystAgent tools
 
-temp_treemap_report.html
 temp_treemap_source_gender_smoker.csv</div>
             <div class="mini-panel" style="margin-top: 14px;">
               <span class="label">Engineering benefit</span>

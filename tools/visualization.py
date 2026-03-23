@@ -693,19 +693,20 @@ def _write_combined_report(data_path: str, metric: str, output_filename: str) ->
     return f"Visualization report generated: {out_path}"
 
 
-def generate_univariate_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
+def generate_combined_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
     """Generate the unified combined visualization report."""
     return _write_combined_report(
         data_path=data_path,
         metric=metric,
-        output_filename="data/output/temp_univariate_report.html",
+        output_filename="data/output/combined_ae_report.html",
     )
+
+
+def generate_univariate_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
+    """Deprecated compatibility wrapper for the unified combined visualization report."""
+    return generate_combined_report(data_path=data_path, metric=metric)
 
 
 def generate_treemap_report(data_path: str = "data/output/sweep_summary.csv", metric: str = "amount") -> str:
-    """Generate the unified combined visualization report."""
-    return _write_combined_report(
-        data_path=data_path,
-        metric=metric,
-        output_filename="data/output/temp_treemap_report.html",
-    )
+    """Deprecated compatibility wrapper for the unified combined visualization report."""
+    return generate_combined_report(data_path=data_path, metric=metric)

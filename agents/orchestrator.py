@@ -81,7 +81,7 @@ class StudyOrchestrator:
     @staticmethod
     def _default_visualization_prompt(data_path: str) -> str:
         """Default next-step visualization after an analysis run completes."""
-        return f"Create a scatter report using the amount metric from this sweep summary CSV: {data_path}"
+        return f"Create the combined A/E report using the amount metric from this sweep summary CSV: {data_path}"
 
     @staticmethod
     def _extract_csv_path(user_query: str) -> Optional[str]:

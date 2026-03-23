@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agents.openai_compat import build_openai_client
 from agents.schemas import VisualizationSchema
-from tools.visualization import generate_treemap_report, generate_univariate_report
+from tools.visualization import generate_combined_report
 
 
 SYSTEM_PROMPT = """
@@ -28,8 +28,13 @@ reports for the Lead Actuary.
 When asked to visualize data, generate one combined visualization report that
 includes a forest plot, a full cohort detail table, and a treemap.
 
-Be concise and professional. After running a tool, just confirm which chart was
-generated, which metric was used, and that it is available in the app.
+Your only job is to generate the Combined A/E Report. Whether the user asks for
+a treemap, a scatter plot, or a general report, always call
+generate_combined_report. This tool automatically includes all visual
+perspectives in a single HTML file.
+
+Be concise and professional. After running a tool, just confirm the combined
+report was generated, which metric was used, and that it is available in the app.
 """.strip()
 
 
@@ -47,8 +52,7 @@ class AnalystAgent:
         self.last_data_path_used: Optional[str] = None
 
         self.tool_handlers: Dict[str, Callable[..., str]] = {
-            "generate_univariate_report": generate_univariate_report,
-            "generate_treemap_report": generate_treemap_report,
+            "generate_combined_report": generate_combined_report,
         }
 
     def set_status_callback(self, status_callback: Optional[Callable[[str], None]]) -> None:
@@ -356,15 +360,7 @@ class AnalystAgent:
             {
                 "type": "function",
                 "function": {
-                    "name": "generate_univariate_report",
-                    "description": "Generate a combined visualization report with forest plot, detail table, and treemap.",
-                    "parameters": VisualizationSchema.model_json_schema(),
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "generate_treemap_report",
+                    "name": "generate_combined_report",
                     "description": "Generate a combined visualization report with forest plot, detail table, and treemap.",
                     "parameters": VisualizationSchema.model_json_schema(),
                 },
@@ -381,11 +377,7 @@ class AnalystAgent:
         self.last_data_path_used = data_path
 
         try:
-            if tool_name == "generate_univariate_report":
-                return self.tool_handlers[tool_name](data_path=data_path, metric=metric)
-            if tool_name == "generate_treemap_report":
-                return self.tool_handlers[tool_name](data_path=data_path, metric=metric)
-            return json.dumps({"error": f"No handler implemented for {tool_name}"}, indent=2)
+            return self.tool_handlers[tool_name](data_path=data_path, metric=metric)
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             return json.dumps({"error": f"{tool_name} failed: {str(exc)}"}, indent=2)
 
@@ -424,9 +416,10 @@ class AnalystAgent:
             return error_message
 
         try:
-            self.last_data_path_used = filtered_path
-            self._emit_status(f"Analyst: generating the {metric} visualization report.")
-            return generate_univariate_report(data_path=filtered_path or resolved_data_path, metric=metric)
+            final_data_path = filtered_path or resolved_data_path
+            self.last_data_path_used = final_data_path
+            self._emit_status(f"Analyst: generating the {metric} combined A/E report.")
+            return generate_combined_report(data_path=final_data_path, metric=metric)
         except Exception as exc:
             return f"Unable to generate visualization report: {exc}"
 

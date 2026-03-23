@@ -62,7 +62,7 @@ def test_continue_after_analysis_routes_to_pending_visualization(monkeypatch):
     assert second == "analyst-ok"
     assert calls[0] == ("actuary", "run a 1-way sweep")
     assert calls[1][0] == "analyst"
-    assert "Create a scatter report using the amount metric from this sweep summary CSV" in calls[1][1]
+    assert "Create the combined A/E report using the amount metric from this sweep summary CSV" in calls[1][1]
     assert calls[1][2] == str(artifact_path)
 
 

@@ -10,7 +10,21 @@ def test_visualization_module_does_not_open_browser():
     assert "webbrowser.open" not in module_source
 
 
-def test_univariate_wrapper_generates_combined_report_with_multiway_labels(tmp_path, monkeypatch):
+def test_legacy_visualization_wrappers_delegate_to_combined_report(monkeypatch):
+    calls = []
+
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
+        calls.append((data_path, metric))
+        return f"Visualization report generated: {data_path}"
+
+    monkeypatch.setattr(visualization, "generate_combined_report", fake_generate_combined_report)
+
+    assert visualization.generate_univariate_report(data_path="first.csv", metric="amount") == "Visualization report generated: first.csv"
+    assert visualization.generate_treemap_report(data_path="second.csv", metric="count") == "Visualization report generated: second.csv"
+    assert calls == [("first.csv", "amount"), ("second.csv", "count")]
+
+
+def test_combined_report_generates_with_multiway_labels(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     sweep_path = output_dir / "sweep_summary.csv"
@@ -23,11 +37,11 @@ def test_univariate_wrapper_generates_combined_report_with_multiway_labels(tmp_p
 
     monkeypatch.chdir(tmp_path)
 
-    response = visualization.generate_univariate_report(data_path=str(sweep_path), metric="amount")
+    response = visualization.generate_combined_report(data_path=str(sweep_path), metric="amount")
     report_path = Path(response.removeprefix("Visualization report generated: ").strip())
 
     assert report_path.parent == output_dir.resolve()
-    assert report_path.name.startswith("temp_univariate_report_")
+    assert report_path.name.startswith("combined_ae_report_")
     assert report_path.suffix == ".html"
     assert report_path.exists()
     html = report_path.read_text(encoding="utf-8")
@@ -43,7 +57,7 @@ def test_univariate_wrapper_generates_combined_report_with_multiway_labels(tmp_p
     assert "Color intensity is capped at A/E 2.0 for readability." in html
 
 
-def test_treemap_wrapper_generates_combined_report_with_flat_one_way_treemap(tmp_path, monkeypatch):
+def test_combined_report_generates_with_flat_one_way_treemap(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     sweep_path = output_dir / "sweep_summary.csv"
@@ -56,11 +70,11 @@ def test_treemap_wrapper_generates_combined_report_with_flat_one_way_treemap(tmp
 
     monkeypatch.chdir(tmp_path)
 
-    response = visualization.generate_treemap_report(data_path=str(sweep_path), metric="amount")
+    response = visualization.generate_combined_report(data_path=str(sweep_path), metric="amount")
     report_path = Path(response.removeprefix("Visualization report generated: ").strip())
 
     assert report_path.parent == output_dir.resolve()
-    assert report_path.name.startswith("temp_treemap_report_")
+    assert report_path.name.startswith("combined_ae_report_")
     assert report_path.suffix == ".html"
     assert report_path.exists()
     html = report_path.read_text(encoding="utf-8")
@@ -89,11 +103,11 @@ def test_combined_report_renders_hierarchy_for_two_way_input(tmp_path, monkeypat
 
     monkeypatch.chdir(tmp_path)
 
-    response = visualization.generate_treemap_report(data_path=str(sweep_path), metric="amount")
+    response = visualization.generate_combined_report(data_path=str(sweep_path), metric="amount")
     report_path = Path(response.removeprefix("Visualization report generated: ").strip())
 
     assert report_path.parent == output_dir.resolve()
-    assert report_path.name.startswith("temp_treemap_report_")
+    assert report_path.name.startswith("combined_ae_report_")
     assert report_path.suffix == ".html"
     html = report_path.read_text(encoding="utf-8")
     assert "node::Gender=M" in html
@@ -115,7 +129,7 @@ def test_combined_report_falls_back_to_flat_for_mixed_depth_input(tmp_path, monk
 
     monkeypatch.chdir(tmp_path)
 
-    response = visualization.generate_treemap_report(data_path=str(sweep_path), metric="amount")
+    response = visualization.generate_combined_report(data_path=str(sweep_path), metric="amount")
     report_path = Path(response.removeprefix("Visualization report generated: ").strip())
     html = report_path.read_text(encoding="utf-8")
 
@@ -137,8 +151,8 @@ def test_report_generation_uses_unique_html_paths(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    first_response = visualization.generate_univariate_report(data_path=str(sweep_path), metric="amount")
-    second_response = visualization.generate_univariate_report(data_path=str(sweep_path), metric="amount")
+    first_response = visualization.generate_combined_report(data_path=str(sweep_path), metric="amount")
+    second_response = visualization.generate_combined_report(data_path=str(sweep_path), metric="amount")
 
     first_path = Path(first_response.removeprefix("Visualization report generated: ").strip())
     second_path = Path(second_response.removeprefix("Visualization report generated: ").strip())
@@ -161,7 +175,7 @@ def test_count_metric_is_explicitly_labeled_in_visualization_html(tmp_path, monk
 
     monkeypatch.chdir(tmp_path)
 
-    response = visualization.generate_univariate_report(data_path=str(sweep_path), metric="count")
+    response = visualization.generate_combined_report(data_path=str(sweep_path), metric="count")
     report_path = Path(response.removeprefix("Visualization report generated: ").strip())
     html = report_path.read_text(encoding="utf-8")
 
@@ -185,7 +199,7 @@ def test_scatter_caps_display_at_three_but_preserves_true_hover_values(tmp_path,
 
     monkeypatch.chdir(tmp_path)
 
-    response = visualization.generate_univariate_report(data_path=str(sweep_path), metric="amount")
+    response = visualization.generate_combined_report(data_path=str(sweep_path), metric="amount")
     report_path = Path(response.removeprefix("Visualization report generated: ").strip())
     html = report_path.read_text(encoding="utf-8")
 

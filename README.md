@@ -84,10 +84,9 @@ The agent interprets the results, but the sweep logic, ranking, and Bayesian int
 
 [`agents/agent_analyst.py`](agents/agent_analyst.py) owns the reporting layer and calls:
 
-- `generate_univariate_report`
-- `generate_treemap_report`
+- `generate_combined_report`
 
-Those tools read aggregated sweep outputs and write standalone HTML artifacts for browser review.
+That tool reads aggregated sweep outputs and writes standalone HTML artifacts for browser review.
 
 ## End-To-End Workflow
 
@@ -121,8 +120,9 @@ The sweep ranks cohorts and writes CSV artifacts to `data/output/`, including:
 
 The Analyst reads the latest sweep artifact and generates browser-openable HTML outputs such as:
 
-- `data/output/temp_univariate_report.html`
-- `data/output/temp_treemap_report.html`
+- `data/output/combined_ae_report_<...>.html`
+
+This unified browser-based report contains the Forest Plot, Detail Table, and Risk Treemap for the latest sweep.
 
 Visualization depends on a fresh sweep summary. If no recent analysis artifact exists, the orchestrator returns a controlled message instead of pretending the chart succeeded.
 
@@ -265,8 +265,7 @@ These files contain ranked cohort outputs with:
 
 ### Visualization Outputs
 
-- `data/output/temp_univariate_report.html`
-- `data/output/temp_treemap_report.html`
+- `data/output/combined_ae_report_<...>.html`
 - temporary filtered sources such as `data/output/temp_treemap_source_<...>.csv`
 
 ## Sweep Controls And Output Contract

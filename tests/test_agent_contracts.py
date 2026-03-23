@@ -9,7 +9,7 @@ import agents.agent_steward as agent_steward_module
 from agents.agent_actuary import ActuaryAgent
 from agents.agent_analyst import AnalystAgent
 from agents.agent_steward import DataStewardAgent
-from agents.schemas import DimensionalSweepSchema
+from agents.schemas import DimensionalSweepSchema, VisualizationSchema
 from tools import data_steward
 
 
@@ -29,6 +29,19 @@ def test_dimensional_sweep_schema_exposes_structured_filters():
     schema = DimensionalSweepSchema.model_json_schema()
     filters_schema = schema["properties"]["filters"]
     assert filters_schema["items"]["$ref"].endswith("FilterClauseSchema")
+
+
+def test_visualization_schema_omits_chart_type_and_exposes_core_fields():
+    schema = VisualizationSchema.model_json_schema()
+
+    assert set(schema["properties"]) == {"metric", "data_path"}
+    assert "chart_type" not in schema["properties"]
+
+
+def test_analyst_agent_exposes_single_combined_report_tool():
+    agent = AnalystAgent()
+
+    assert [tool["function"]["name"] for tool in agent._tools_spec()] == ["generate_combined_report"]
 
 
 def test_steward_agent_can_execute_regroup_tool(tmp_path, monkeypatch):
@@ -515,14 +528,14 @@ def test_analyst_agent_filters_treemap_to_requested_pair(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
         captured["data_path"] = data_path
         captured["metric"] = metric
         captured["dimensions"] = pd.read_csv(data_path)["Dimensions"].tolist()
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run(
@@ -557,7 +570,7 @@ def test_analyst_agent_rejects_unavailable_treemap_pair(tmp_path, monkeypatch):
     assert "gender + smoker" in response.lower()
 
 
-def test_analyst_agent_defaults_to_univariate_for_one_way_visualize_request(tmp_path, monkeypatch):
+def test_analyst_agent_uses_combined_report_for_one_way_visualize_request(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     sweep_path = output_dir / "sweep_summary.csv"
@@ -569,23 +582,18 @@ def test_analyst_agent_defaults_to_univariate_for_one_way_visualize_request(tmp_
 
     calls = []
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
-        calls.append(("scatter", data_path, metric))
-        return f"Visualization report generated: {data_path}"
-
-    def fake_generate_treemap_report(data_path: str, metric: str = "amount") -> str:
-        calls.append(("treemap", data_path, metric))
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
+        calls.append((data_path, metric))
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
-    monkeypatch.setattr(agent_analyst_module, "generate_treemap_report", fake_generate_treemap_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Visualize this sweep for me.", data_path=str(sweep_path))
 
     assert response.startswith("Visualization report generated:")
-    assert calls == [("scatter", str(sweep_path), "amount")]
+    assert calls == [(str(sweep_path), "amount")]
 
 
 def test_analyst_agent_uses_latest_sweep_prompt_without_treating_it_as_dimension(tmp_path, monkeypatch):
@@ -600,21 +608,21 @@ def test_analyst_agent_uses_latest_sweep_prompt_without_treating_it_as_dimension
 
     calls = []
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
-        calls.append(("scatter", data_path, metric))
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
+        calls.append((data_path, metric))
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Generate a visualization for the latest sweep.", data_path=str(sweep_path))
 
     assert response.startswith("Visualization report generated:")
-    assert calls == [("scatter", str(sweep_path), "amount")]
+    assert calls == [(str(sweep_path), "amount")]
 
 
-def test_analyst_agent_defaults_to_treemap_for_multiway_visualize_request(tmp_path, monkeypatch):
+def test_analyst_agent_uses_combined_report_for_multiway_visualize_request(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     sweep_path = output_dir / "sweep_summary.csv"
@@ -626,23 +634,18 @@ def test_analyst_agent_defaults_to_treemap_for_multiway_visualize_request(tmp_pa
 
     calls = []
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
-        calls.append(("scatter", data_path, metric))
-        return f"Visualization report generated: {data_path}"
-
-    def fake_generate_treemap_report(data_path: str, metric: str = "amount") -> str:
-        calls.append(("treemap", data_path, metric))
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
+        calls.append((data_path, metric))
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
-    monkeypatch.setattr(agent_analyst_module, "generate_treemap_report", fake_generate_treemap_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Visualize this sweep for me.", data_path=str(sweep_path))
 
     assert response.startswith("Visualization report generated:")
-    assert calls == [("scatter", str(sweep_path), "amount")]
+    assert calls == [(str(sweep_path), "amount")]
 
 
 def test_analyst_agent_honors_explicit_scatter_request_on_multiway_data(tmp_path, monkeypatch):
@@ -657,26 +660,21 @@ def test_analyst_agent_honors_explicit_scatter_request_on_multiway_data(tmp_path
 
     calls = []
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
-        calls.append(("scatter", data_path, metric))
-        return f"Visualization report generated: {data_path}"
-
-    def fake_generate_treemap_report(data_path: str, metric: str = "amount") -> str:
-        calls.append(("treemap", data_path, metric))
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
+        calls.append((data_path, metric))
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
-    monkeypatch.setattr(agent_analyst_module, "generate_treemap_report", fake_generate_treemap_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Create a scatter report for this sweep.", data_path=str(sweep_path))
 
     assert response.startswith("Visualization report generated:")
-    assert calls == [("scatter", str(sweep_path), "amount")]
+    assert calls == [(str(sweep_path), "amount")]
 
 
-def test_analyst_agent_defaults_to_treemap_for_mixed_depth_visualize_request(tmp_path, monkeypatch):
+def test_analyst_agent_uses_combined_report_for_mixed_depth_visualize_request(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     sweep_path = output_dir / "sweep_summary.csv"
@@ -688,12 +686,12 @@ def test_analyst_agent_defaults_to_treemap_for_mixed_depth_visualize_request(tmp
 
     calls = []
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
         calls.append((data_path, metric))
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Visualize this sweep for me.", data_path=str(sweep_path))
@@ -715,14 +713,14 @@ def test_analyst_agent_filters_univariate_to_requested_dimension(tmp_path, monke
 
     captured = {}
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
         captured["data_path"] = data_path
         captured["metric"] = metric
         captured["dimensions"] = pd.read_csv(data_path)["Dimensions"].tolist()
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Create a univariate report for Risk Class only.", data_path=str(sweep_path))
@@ -765,14 +763,14 @@ def test_analyst_agent_filters_treemap_to_requested_single_dimension(tmp_path, m
 
     captured = {}
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
         captured["data_path"] = data_path
         captured["metric"] = metric
         captured["dimensions"] = pd.read_csv(data_path)["Dimensions"].tolist()
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Generate a treemap for Risk Class only.", data_path=str(sweep_path))
@@ -796,14 +794,14 @@ def test_analyst_agent_filters_treemap_to_requested_single_dimension_without_onl
 
     captured = {}
 
-    def fake_generate_univariate_report(data_path: str, metric: str = "amount") -> str:
+    def fake_generate_combined_report(data_path: str, metric: str = "amount") -> str:
         captured["data_path"] = data_path
         captured["metric"] = metric
         captured["dimensions"] = pd.read_csv(data_path)["Dimensions"].tolist()
         return f"Visualization report generated: {data_path}"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_analyst_module, "generate_univariate_report", fake_generate_univariate_report)
+    monkeypatch.setattr(agent_analyst_module, "generate_combined_report", fake_generate_combined_report)
 
     agent = AnalystAgent()
     response = agent.run("Generate a treemap report for Risk Class.", data_path=str(sweep_path))
