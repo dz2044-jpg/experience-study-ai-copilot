@@ -85,6 +85,7 @@ class AnalystAgent:
 
         cleaned = requested_segment
         for phrase in (
+            "the latest sweep",
             "the 2-way sweep",
             "2-way sweep",
             "pairwise sweep",
@@ -129,6 +130,7 @@ class AnalystAgent:
 
         cleaned = requested_segment
         for phrase in (
+            "the latest sweep",
             "the latest sweep summary",
             "latest sweep summary",
             "latest sweep",
@@ -148,7 +150,7 @@ class AnalystAgent:
         if not cleaned:
             return None
         normalized = cls._normalize_dimension_name(cleaned)
-        if normalized in {"this", "that", "it", "sweep", "me"}:
+        if normalized in {"this", "that", "it", "sweep", "me", "the", "latest", "current"}:
             return None
         if "sweep" in normalized or re.search(r"(^|_)(one|two|three|[123])_way($|_)", normalized):
             return None

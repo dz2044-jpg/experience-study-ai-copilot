@@ -109,6 +109,10 @@ def test_render_app_constructs_streamlit_shell(monkeypatch):
 
     assert "orchestrator" in dummy_st.session_state
     assert any(call[0] == "title" for call in dummy_st.calls)
+    assert (
+        "Ask the copilot to profile data, run a sweep (e.g., 'Sweep Gender where Issue_Age > 50'), or generate a chart."
+        in [call[1] for call in dummy_st.calls if call[0] == "chat_input"]
+    )
 
 
 def test_render_app_renders_history_in_chronological_order(monkeypatch):

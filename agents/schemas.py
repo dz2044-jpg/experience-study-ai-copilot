@@ -1,7 +1,10 @@
 """Pydantic schemas defining tool-call contracts for AI agents."""
 
+from typing import Any, Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Literal
+
+from tools.data_io import CANONICAL_ANALYSIS_OUTPUT_PATH
 
 
 class ProfileDatasetSchema(BaseModel):
@@ -53,8 +56,8 @@ class FeatureEngineeringSchema(BaseModel):
         description="Input raw path for transformation (.csv, .parquet, or .xlsx).",
     )
     output_path: str = Field(
-        default="data/output/analysis_inforce.csv",
-        description="Output CSV path to save transformed data.",
+        default=CANONICAL_ANALYSIS_OUTPUT_PATH,
+        description="Output prepared-analysis path to save transformed data.",
     )
     sheet_name: Optional[str] = Field(
         default=None,
@@ -86,12 +89,26 @@ class RegroupCategoricalSchema(BaseModel):
         description="Input raw path for regrouping (.csv, .parquet, or .xlsx).",
     )
     output_path: str = Field(
-        default="data/output/analysis_inforce.csv",
-        description="Output CSV path to save transformed data.",
+        default=CANONICAL_ANALYSIS_OUTPUT_PATH,
+        description="Output prepared-analysis path to save transformed data.",
     )
     sheet_name: Optional[str] = Field(
         default=None,
         description="Optional worksheet name when source_path points to an .xlsx workbook.",
+    )
+
+
+class FilterClauseSchema(BaseModel):
+    """Schema for a single structured sweep filter."""
+
+    column: str = Field(..., description="Dataset column name to filter on.")
+    operator: Literal["=", "!=", ">", ">=", "<", "<="] = Field(
+        ...,
+        description="Scalar comparison operator.",
+    )
+    value: str | int | float = Field(
+        ...,
+        description="Scalar filter value to compare against.",
     )
 
 
@@ -134,12 +151,11 @@ class DimensionalSweepSchema(BaseModel):
             "and 95% credible bounds for count and amount."
         ),
     )
-    filters: List[str] = Field(
+    filters: List[FilterClauseSchema] = Field(
         default_factory=list,
         description=(
-            "Pandas query filters applied before aggregation (e.g., [\"Gender == 'F'\", \"Smoker == 'No'\"]). "
-            "The tool returns JSON objects where each object represents one cohort with "
-            "Dimensions, actual/expected counts and amounts, A/E ratios, and 95% credible interval bounds."
+            "Structured scalar filters applied before aggregation. "
+            "Each filter uses column/operator/value and all filters combine with logical AND."
         ),
     )
     selected_columns: Optional[List[str]] = Field(
@@ -149,8 +165,8 @@ class DimensionalSweepSchema(BaseModel):
         ),
     )
     data_path: str = Field(
-        default="data/output/analysis_inforce.csv",
-        description="Processed input CSV used for actuarial dimensional sweeps.",
+        default=CANONICAL_ANALYSIS_OUTPUT_PATH,
+        description="Prepared analysis dataset used for actuarial dimensional sweeps.",
     )
 
 

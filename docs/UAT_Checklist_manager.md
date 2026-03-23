@@ -66,7 +66,7 @@ Notes:
 
 - Action:
   Prompt the Copilot:
-  `Group Face_Amount into 4 equal-width bands, and then group Issue_Age into 4 equal-width bands.`
+  `Group Face_Amount into 4 equal-width bands, and then group Issue_Age into 3 equal-width bands.`
 - Expected Pass:
   Inspect `data/output/analysis_inforce.parquet`.
   Both `Face_Amount_band` and `Issue_Age_band` must exist.

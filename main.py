@@ -212,7 +212,9 @@ def render_app() -> None:
                 widget_key_prefix=f"history-{idx}",
             )
 
-    prompt = st.chat_input("Ask the copilot to profile data, run a sweep, or generate a chart.")
+    prompt = st.chat_input(
+        "Ask the copilot to profile data, run a sweep (e.g., 'Sweep Gender where Issue_Age > 50'), or generate a chart."
+    )
     if prompt and prompt.strip():
         cleaned_prompt = prompt.strip()
         with st.chat_message("user"):

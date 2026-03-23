@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "duckdb>=1.4.1",
     "git-filter-repo>=2.47.0",
     "openai>=2.28.0",
     "openpyxl>=3.1.5",

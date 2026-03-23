@@ -210,6 +210,55 @@ class StudyOrchestrator:
             self.pending_visualization_prompt = None
         return response
 
+    @staticmethod
+    def _combined_response(actuarial_response: str, visualization_response: str) -> str:
+        """Compose a single reply for auto-chained analysis + visualization runs."""
+        return (
+            f"{actuarial_response}\n\n"
+            f"Visualization\n"
+            f"{visualization_response}"
+        )
+
+    def _should_auto_chain_analysis_to_visualization(self, user_query: str) -> bool:
+        """Return True only for mixed analysis + visualization requests without data prep."""
+        q = user_query.lower()
+        if self._is_continue_message(user_query):
+            return False
+        explicit_analysis_action = any(token in q for token in ("run", "calculate", "show me", "perform"))
+        return (
+            explicit_analysis_action
+            and
+            self._has_analysis_intent(q)
+            and self._has_visualization_intent(q)
+            and not self._has_data_prep_intent(q)
+        )
+
+    def _route_analysis_then_visualization(self, user_query: str) -> str:
+        """Auto-chain analysis into visualization for a single mixed-intent request."""
+        actuarial_response = self._route_to_actuary(user_query)
+        fresh_artifact = None
+        if (
+            self.actuary.latest_sweep_depth is not None
+            and self._has_fresh_analysis_artifact(self.actuary.latest_depth_output_path)
+        ):
+            fresh_artifact = self.actuary.latest_depth_output_path
+        elif self._has_fresh_analysis_artifact(self.actuary.latest_output_alias_path):
+            fresh_artifact = self.actuary.latest_output_alias_path
+
+        if not fresh_artifact:
+            return actuarial_response
+
+        visualization_prompt = "Generate a visualization for the latest sweep."
+        self._emit_status("Orchestrator: auto-chaining fresh sweep artifact into visualization.")
+        visualization_response = self.analyst_agent.run(visualization_prompt, data_path=fresh_artifact)
+        self._set_last_agent("ANALYST")
+        self.pending_analysis_prompt = None
+        self.pending_visualization_prompt = None
+        self.latest_analysis_output_path = fresh_artifact
+        if self.actuary.latest_sweep_depth is not None:
+            self.latest_analysis_output_paths_by_depth[self.actuary.latest_sweep_depth] = fresh_artifact
+        return self._combined_response(actuarial_response, visualization_response)
+
     def _route_to_analyst(self, user_query: str) -> str:
         """Run visualization and clear pending visualization follow-ups."""
         self._emit_status("Orchestrator: resolving visualization artifact.")
@@ -265,13 +314,13 @@ class StudyOrchestrator:
         has_analysis = self._has_analysis_intent(q)
         has_prep = self._has_data_prep_intent(q)
 
+        if has_prep and (has_analysis or has_visualize):
+            # NO CHAINING through data prep: stop at the first stage.
+            return "DATA_PREP"
         if has_visualize:
             return "VISUALIZE"
         if has_analysis and not has_prep:
             return "ANALYSIS"
-        if has_prep and has_analysis:
-            # NO CHAINING: classify only the first logical step.
-            return "DATA_PREP"
         if has_prep:
             return "DATA_PREP"
         return "GENERAL"
@@ -352,6 +401,10 @@ class StudyOrchestrator:
     def process_query(self, user_query: str) -> str:
         """Route a query to the appropriate specialized agent(s)."""
         self._emit_status("Orchestrator: received a new request.")
+        if self._should_auto_chain_analysis_to_visualization(user_query):
+            self._emit_status("Orchestrator: mixed analysis + visualization request detected.")
+            return self._route_analysis_then_visualization(user_query)
+
         intent = self._classify_intent(user_query)
 
         if intent == "GENERAL":

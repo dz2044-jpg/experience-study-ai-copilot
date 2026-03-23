@@ -25,8 +25,9 @@ from tools.data_steward import (
     regroup_categorical_features,
     run_actuarial_data_checks,
 )
+from tools.data_io import CANONICAL_ANALYSIS_OUTPUT_PATH, resolve_prepared_analysis_path
 
-RAW_INPUT_PATH_RE = re.compile(r"((?:/|data/)[\w./-]+\.(?:csv|parquet|xlsx))", re.IGNORECASE)
+RAW_INPUT_PATH_RE = re.compile(r"(?<!\w)((?:/|data/)?[\w./-]+\.(?:csv|parquet|xlsx))(?!\w)", re.IGNORECASE)
 DEFAULT_RAW_INPUT_PATH = "data/input/synthetic_inforce.csv"
 
 
@@ -41,7 +42,7 @@ Use tools whenever possible. Be technical, concise, and helpful.
 Always confirm what data transformations were applied and where output was saved.
 
 CRITICAL GUARDRAILS: 
-1. Immutable Input: You may read from `data/input/`, but you must save all outputs strictly to `data/output/analysis_inforce.csv`.
+1. Immutable Input: You may read from `data/input/`, but you must save all outputs strictly to `data/output/analysis_inforce.parquet`.
 2. Null Preservation: You shall NEVER automatically drop rows with Null/NaN values, nor impute them, unless explicitly instructed by the user. 
 3. Domain Rule: In life insurance, a Null in the 'COLA' column is expected if there is no claim. Do not flag this as an error.
 """.strip()
@@ -139,7 +140,133 @@ class DataStewardAgent:
         path_match = RAW_INPUT_PATH_RE.search(user_message)
         if not path_match:
             return None
-        return path_match.group(1)
+        raw_path = path_match.group(1)
+        candidate = Path(raw_path)
+
+        if candidate.is_absolute() or "/" in raw_path or raw_path.startswith("data/"):
+            return raw_path
+
+        candidate_paths = [
+            candidate,
+            Path("data/output") / raw_path,
+            Path("data/input") / raw_path,
+        ]
+        for candidate_path in candidate_paths:
+            if candidate_path.exists():
+                return str(candidate_path)
+        return raw_path
+
+    @staticmethod
+    def _is_schema_listing_request(user_message: str) -> bool:
+        """Detect explicit requests to list columns or dataset schema details."""
+        msg = user_message.lower()
+        schema_hits = [
+            "what columns",
+            "what are the columns",
+            "list columns",
+            "show columns",
+            "column names",
+            "schema",
+            "data types",
+            "null counts",
+        ]
+        return any(hit in msg for hit in schema_hits)
+
+    @staticmethod
+    def _is_prepared_dataset_reference(user_message: str, explicit_path: Optional[str]) -> bool:
+        """Detect references to the prepared analysis artifact by name or path."""
+        msg = user_message.lower()
+        if (
+            "analysis_inforce" in msg
+            or "prepared analysis" in msg
+            or "prepared dataset" in msg
+        ):
+            return True
+        return bool(explicit_path and Path(explicit_path).name in {"analysis_inforce.parquet", "analysis_inforce.csv"})
+
+    @classmethod
+    def _should_use_deterministic_schema_route(
+        cls,
+        user_message: str,
+        explicit_path: Optional[str],
+    ) -> bool:
+        """Prefer deterministic schema output for schema questions and prepared-dataset profiling."""
+        if cls._is_schema_listing_request(user_message):
+            return True
+
+        msg = user_message.lower()
+        if "profile" not in msg:
+            return False
+
+        return cls._is_prepared_dataset_reference(user_message, explicit_path)
+
+    @staticmethod
+    def _normalize_column_name(name: str) -> str:
+        """Normalize column names for case-insensitive matching."""
+        normalized = re.sub(r"[^a-z0-9]+", "_", name.strip().lower())
+        return re.sub(r"_+", "_", normalized).strip("_")
+
+    @staticmethod
+    def _default_schema_target_path(user_message: str) -> str:
+        """Choose the default dataset for schema inspection requests."""
+        msg = user_message.lower()
+        if "analysis_inforce" in msg or "prepared analysis" in msg or "prepared dataset" in msg:
+            return str(resolve_prepared_analysis_path(CANONICAL_ANALYSIS_OUTPUT_PATH))
+        return DEFAULT_RAW_INPUT_PATH
+
+    @staticmethod
+    def _extract_requested_schema_columns(user_message: str, available_columns: list[str]) -> list[str]:
+        """Return explicitly requested columns mentioned in the user's schema question."""
+        column_lookup = {
+            DataStewardAgent._normalize_column_name(column): column for column in available_columns
+        }
+        requested_columns: list[str] = []
+
+        for raw_token in re.split(r"[^A-Za-z0-9_]+", user_message):
+            normalized = DataStewardAgent._normalize_column_name(raw_token)
+            if not normalized:
+                continue
+            resolved = column_lookup.get(normalized)
+            if resolved and resolved not in requested_columns:
+                requested_columns.append(resolved)
+
+        return requested_columns
+
+    @staticmethod
+    def _format_profile_summary(profile_json: str, data_path: str, user_message: str) -> str:
+        """Render a deterministic schema summary from the profile tool JSON."""
+        payload = json.loads(profile_json)
+        if payload.get("error"):
+            return f"Unable to profile `{data_path}`: {payload['error']}"
+
+        columns = payload.get("columns", [])
+        data_types = payload.get("data_types", {})
+        null_counts = payload.get("null_counts", {})
+        requested_columns = DataStewardAgent._extract_requested_schema_columns(user_message, columns)
+        columns_to_show = requested_columns or columns
+
+        lines = []
+        if requested_columns:
+            lines.append(f"Requested columns for `{data_path}`:")
+        else:
+            lines.append(f"Columns, data types, and null counts for `{data_path}`:")
+        lines.append("")
+        for column in columns_to_show:
+            lines.append(
+                f"- `{column}`: `{data_types.get(column, 'unknown')}`; nulls: `{null_counts.get(column, 'unknown')}`"
+            )
+        return "\n".join(lines)
+
+    def _deterministic_schema_route(self, user_message: str) -> Optional[str]:
+        """Handle explicit schema/column inspection requests without model summarization."""
+        explicit_path = self._extract_tabular_path(user_message)
+        if not self._should_use_deterministic_schema_route(user_message, explicit_path):
+            return None
+
+        active_data_path = explicit_path or self._default_schema_target_path(user_message)
+        self._emit_status("Data Steward: profiling the dataset schema.")
+        profile_json = profile_dataset(data_path=active_data_path)
+        return self._format_profile_summary(profile_json, active_data_path, user_message)
 
     def _execute_tool_with_context(
         self,
@@ -182,13 +309,13 @@ class DataStewardAgent:
                 strategy="equal_width",
                 bins=bins,
                 source_path=source_path,
-                output_path="data/output/analysis_inforce.csv",
+                output_path=CANONICAL_ANALYSIS_OUTPUT_PATH,
                 sheet_name=active_sheet_name,
             )
             return (
                 f"Banding complete for `{source_column}` using equal-width `{bins}` bins.\n"
                 f"Source data: `{source_path}`.\n"
-                f"Transformation saved to `data/output/analysis_inforce.csv`.\n"
+                f"Transformation saved to `{CANONICAL_ANALYSIS_OUTPUT_PATH}`.\n"
                 f"Tool JSON:\n{result}"
             )
 
@@ -214,7 +341,7 @@ class DataStewardAgent:
                 return "Mapping dictionary must be valid JSON when using deterministic regrouping fallback."
 
             source_column = column_match.group(1)
-            source_path = "data/output/analysis_inforce.csv"
+            source_path = str(resolve_prepared_analysis_path(CANONICAL_ANALYSIS_OUTPUT_PATH))
             if not Path(source_path).exists():
                 source_path = active_data_path
 
@@ -222,13 +349,13 @@ class DataStewardAgent:
                 source_column=source_column,
                 mapping_dict=mapping_dict,
                 source_path=source_path,
-                output_path="data/output/analysis_inforce.csv",
+                output_path=CANONICAL_ANALYSIS_OUTPUT_PATH,
                 sheet_name=active_sheet_name if source_path == active_data_path else None,
             )
             return (
                 f"Regrouping complete for `{source_column}`.\n"
                 f"Source data: `{source_path}`.\n"
-                f"Transformation saved to `data/output/analysis_inforce.csv`.\n"
+                f"Transformation saved to `{CANONICAL_ANALYSIS_OUTPUT_PATH}`.\n"
                 f"Tool JSON:\n{result}"
             )
 
@@ -239,6 +366,10 @@ class DataStewardAgent:
 
     def run(self, user_message: str) -> str:
         """Handle a user message using OpenAI tool-calling."""
+        deterministic_response = self._deterministic_schema_route(user_message)
+        if deterministic_response is not None:
+            return deterministic_response
+
         if not self.client:
             self._emit_status("Data Steward: OpenAI is unavailable, using deterministic local tooling.")
             return self._fallback_route(user_message)
