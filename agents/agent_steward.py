@@ -288,14 +288,34 @@ class DataStewardAgent:
             self._emit_status("Data Steward: profiling the dataset and running actuarial data checks.")
             profile_json = profile_dataset(data_path=active_data_path, sheet_name=active_sheet_name)
             checks_json = run_actuarial_data_checks(data_path=active_data_path, sheet_name=active_sheet_name)
+            profile = json.loads(profile_json)
             checks = json.loads(checks_json)
             status = checks.get("status", "UNKNOWN")
+
+            # Build a readable markdown summary instead of dumping raw JSON.
+            columns = profile.get("columns", [])
+            dtypes = profile.get("data_types", {})
+            nulls = profile.get("null_counts", {})
+            classification = checks.get("feature_classification", {})
+
+            col_table = "| Column | Type | Nulls | Classification |\n|---|---|---|---|\n"
+            for col in columns:
+                col_table += f"| `{col}` | {dtypes.get(col, '–')} | {nulls.get(col, '–')} | {classification.get(col, '–')} |\n"
+
+            issues = checks.get("issues", [])
+            issues_section = "None" if not issues else "\n".join(f"- {issue}" for issue in issues)
+
             return (
-                f"Profile complete for `{active_data_path}`.\n"
-                f"- Validation status: **{status}**\n"
-                f"- MOC check included: numeric type, range (0,1], and MAC==1 => MOC==1.0\n"
-                f"- Profile JSON:\n{profile_json}\n\n"
-                f"- Data checks JSON:\n{checks_json}"
+                f"## Dataset Profile: `{active_data_path}`\n\n"
+                f"| Metric | Value |\n|---|---|\n"
+                f"| Total Rows | {profile.get('total_rows', '–'):,} |\n"
+                f"| Unique Policies | {profile.get('unique_policy_count', '–'):,} |\n"
+                f"| Memory Usage | {profile.get('memory_usage_human', '–')} |\n"
+                f"| Validation Status | **{status}** |\n\n"
+                f"### Columns\n\n{col_table}\n"
+                f"### Actuarial Data Checks\n\n"
+                f"- MOC check: numeric type, range (0,1], and MAC==1 ⇒ MOC==1.0\n"
+                f"- Issues: {issues_section}\n"
             )
 
         if "band" in msg:
