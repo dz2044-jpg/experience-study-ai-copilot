@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - depends on environment
     st = None  # type: ignore[assignment]
 
 
-VISUALIZATION_PATH_RE = re.compile(r"(?P<path>/\S+\.html)")
+VISUALIZATION_PATH_RE = re.compile(r"(?P<path>(?:[A-Za-z]:[\\/]|/)\S+\.html)")
 EMPTY_STATE_SUGGESTIONS = (
     (
         "info",
