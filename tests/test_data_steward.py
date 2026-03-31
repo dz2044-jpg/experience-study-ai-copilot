@@ -150,3 +150,28 @@ def test_create_categorical_bands_reads_legacy_prepared_csv_when_parquet_is_miss
     assert result["success"] is True
     engineered = pd.read_parquet(parquet_output)
     assert "Face_Amount_band" in engineered.columns
+
+
+def test_quantile_banding_returns_controlled_error_when_realized_bins_collapse_below_three(tmp_path, monkeypatch):
+    source_df = pd.concat([pd.read_csv(FIXTURE_PATH)] * 3, ignore_index=True)
+    source_df["Face_Amount"] = 100000
+    source_df.loc[source_df.index[-2:], "Face_Amount"] = 250000
+
+    source = tmp_path / "skewed_inforce.csv"
+    source_df.to_csv(source, index=False)
+
+    output = tmp_path / "analysis_inforce.parquet"
+    monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
+    monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
+
+    result = json.loads(
+        data_steward.create_categorical_bands(
+            source_column="Face_Amount",
+            strategy="quantiles",
+            bins=5,
+            source_path=str(source),
+        )
+    )
+
+    assert "produced only" in result["error"]
+    assert not output.exists()

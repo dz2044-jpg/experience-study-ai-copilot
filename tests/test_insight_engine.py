@@ -17,6 +17,35 @@ def _write_analysis_parquet(path: Path) -> None:
     pd.read_csv(FIXTURE_PATH).to_parquet(path, index=False)
 
 
+def _write_wide_analysis_parquet(
+    path: Path,
+    dimension_names: list[str],
+    *,
+    signal_dimension: str | None = None,
+) -> None:
+    rows = []
+    for index in range(20):
+        high_signal = index < 10
+        row = {
+            "Policy_Number": f"P{index:03d}",
+            "MAC": 1.0 if high_signal else 0.0,
+            "MOC": 1.0,
+            "MEC": 1.0,
+            "MAF": 200.0 if high_signal else 50.0,
+            "MEF": 100.0,
+            "COLA": "",
+            "Duration": 1,
+        }
+        for dimension_name in dimension_names:
+            if dimension_name == signal_dimension:
+                row[dimension_name] = "High" if high_signal else "Low"
+            else:
+                row[dimension_name] = "A"
+        rows.append(row)
+
+    pd.DataFrame(rows).to_parquet(path, index=False)
+
+
 def test_pairwise_combinatorial_sweep_generates_all_requested_pairs(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -132,6 +161,81 @@ def test_sweep_writes_depth_specific_latest_aliases(tmp_path, monkeypatch):
         )
         assert result["latest_depth_output_path"] == expected_path
         assert (tmp_path / expected_path).exists()
+
+
+def test_auto_screening_keeps_high_signal_dimension_beyond_first_twelve(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    dimension_names = [f"Dim{index:02d}" for index in range(1, 15)]
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_wide_analysis_parquet(analysis_path, dimension_names, signal_dimension="Dim13")
+
+    monkeypatch.chdir(tmp_path)
+
+    result = json.loads(
+        run_dimensional_sweep(
+            depth=2,
+            top_n=200,
+            data_path=str(analysis_path),
+        )
+    )
+
+    assert "results" in result
+    assert any("Dim13=" in row["Dimensions"] for row in result["results"])
+
+
+def test_selected_columns_bypass_auto_screening(monkeypatch, tmp_path):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+
+    from tools import insight_engine
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Auto-screening should not run for explicit selected_columns.")
+
+    monkeypatch.setattr(insight_engine, "_rank_auto_screened_dimensions", fail_if_called)
+
+    result = json.loads(
+        run_dimensional_sweep(
+            depth=2,
+            selected_columns=["Gender", "Smoker"],
+            top_n=10,
+            data_path=str(analysis_path),
+        )
+    )
+
+    assert "results" in result
+    assert result["depth"] == 2
+
+
+def test_explicit_selected_columns_return_controlled_error_when_combination_count_is_too_large(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    dimension_names = [f"Dim{index:02d}" for index in range(1, 16)]
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_wide_analysis_parquet(analysis_path, dimension_names)
+
+    monkeypatch.chdir(tmp_path)
+
+    result = json.loads(
+        run_dimensional_sweep(
+            depth=2,
+            selected_columns=dimension_names,
+            top_n=10,
+            data_path=str(analysis_path),
+        )
+    )
+
+    assert result["error"] == "Requested explicit sweep dimensions would generate too many combinations."
+    assert result["requested_combination_count"] == 105
+    assert result["max_supported_combinations"] == 100
 
 
 def test_sweep_includes_zero_mac_cohorts_by_default(tmp_path, monkeypatch):

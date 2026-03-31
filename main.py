@@ -17,6 +17,20 @@ except ImportError:  # pragma: no cover - depends on environment
 
 
 VISUALIZATION_PATH_RE = re.compile(r"(?P<path>/\S+\.html)")
+EMPTY_STATE_SUGGESTIONS = (
+    (
+        "info",
+        "**Profile Data**\n\n'Profile the synthetic inforce dataset and tell me the columns.'",
+    ),
+    (
+        "success",
+        "**Run an A/E Sweep**\n\n'Run a sweep on Gender and Issue Age to find the worst cohorts.'",
+    ),
+    (
+        "warning",
+        "**Visualize**\n\n'Generate an A/E scatter plot for the top 5 worst performing segments.'",
+    ),
+)
 
 
 def _extract_visualization_path(response: str) -> Optional[str]:
@@ -180,12 +194,70 @@ def _render_assistant_response(
         return
 
     resolved_html_path = html_path.resolve()
-    if st.button("Open in browser", key=f"{widget_key_prefix}-open-visualization-{resolved_html_path}"):
-        webbrowser.open(resolved_html_path.as_uri())
-    st.caption(f"Saved HTML artifact: {resolved_html_path}")
+    with st.container(border=True):
+        st.markdown("##### 📈 Generated Visualization Artifact")
+        st.caption(f"`{resolved_html_path.name}`")
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button(
+                "🌐 Open in Browser",
+                key=f"{widget_key_prefix}-open-visualization-{resolved_html_path}",
+            ):
+                webbrowser.open(resolved_html_path.as_uri())
+        with col2:
+            st.caption("Open the standalone report or preview it inline below.")
 
-    with st.expander("View visualization"):
-        st.components.v1.html(resolved_html_path.read_text(encoding="utf-8"), height=1400, scrolling=True)
+        with st.expander("Preview Visualization Inline", expanded=False):
+            st.components.v1.html(
+                resolved_html_path.read_text(encoding="utf-8"),
+                height=600,
+                scrolling=True,
+            )
+
+
+def _render_empty_state() -> None:
+    """Render the persistent landing guidance above the chat workspace."""
+    if st is None:
+        raise RuntimeError("Streamlit is required to run the web app. Install project dependencies first.")
+
+    st.markdown("### 👋 Welcome to the Actuarial AI Copilot")
+    st.markdown(
+        "I am ready to help you analyze inforce data, calculate Actual-to-Expected (A/E) ratios, "
+        "and build interactive visualizations. **What would you like to do?**"
+    )
+
+    columns = st.columns(3)
+    for column, (variant, message) in zip(columns, EMPTY_STATE_SUGGESTIONS):
+        with column:
+            getattr(st, variant)(message)
+
+    st.markdown("---")
+
+
+def _render_sidebar() -> bool:
+    """Render the persistent control panel and return True when a reset rerun is triggered."""
+    if st is None:
+        raise RuntimeError("Streamlit is required to run the web app. Install project dependencies first.")
+
+    with st.sidebar:
+        st.title("⚙️ Copilot Controls")
+        st.markdown("Manage your current analysis session.")
+
+        if st.button(
+            "🗑️ Clear Conversation",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state["history"] = []
+            st.session_state["orchestrator"] = StudyOrchestrator()
+            st.rerun()
+            return True
+
+        st.markdown("---")
+        st.caption("Backend Status: **Online** 🟢")
+        st.caption("Active Agent: **StudyOrchestrator**")
+
+    return False
 
 
 def render_app() -> None:
@@ -193,19 +265,25 @@ def render_app() -> None:
     if st is None:
         raise RuntimeError("Streamlit is required to run the web app. Install project dependencies first.")
 
-    st.set_page_config(page_title="Experience Study AI Copilot", layout="wide")
-    st.title("Experience Study AI Copilot")
-    st.caption("Route actuarial data prep, A/E analysis, and visualization requests through the orchestrator.")
+    st.set_page_config(page_title="Experience Study AI Copilot", layout="wide", page_icon="📊")
 
     if "orchestrator" not in st.session_state:
         st.session_state["orchestrator"] = StudyOrchestrator()
     if "history" not in st.session_state:
         st.session_state["history"] = []
 
+    if _render_sidebar():
+        return
+
+    st.title("Experience Study AI Copilot")
+    st.caption("Route actuarial data prep, A/E analysis, and visualization requests through the orchestrator.")
+
+    _render_empty_state()
+
     for idx, item in enumerate(st.session_state["history"]):
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar="👤"):
             st.markdown(item["prompt"])
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar="📊"):
             _render_assistant_response(
                 item["response"],
                 item.get("visualization_path"),
@@ -217,9 +295,9 @@ def render_app() -> None:
     )
     if prompt and prompt.strip():
         cleaned_prompt = prompt.strip()
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar="👤"):
             st.markdown(cleaned_prompt)
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar="📊"):
             status_panel = st.status("Starting orchestrator...", expanded=True)
             response_placeholder = st.empty()
             response = _wait_for_response_with_status(

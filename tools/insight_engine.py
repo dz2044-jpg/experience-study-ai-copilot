@@ -7,6 +7,7 @@ NEVER allow the LLM to perform actuarial math; all calculations are deterministi
 
 import difflib
 import json
+import math
 import re
 from itertools import combinations
 from pathlib import Path
@@ -160,6 +161,8 @@ NUMERIC_TYPE_PREFIXES = (
 )
 
 SWEEP_OUTPUT_PATH = "data/output/sweep_summary.csv"
+AUTO_DIMENSION_SCREEN_LIMIT = 12
+MAX_EXPLICIT_COMBINATIONS = 100
 
 
 def _latest_sweep_output_path_for_depth(depth: int) -> Path:
@@ -383,6 +386,88 @@ def _validate_selected_columns(
     return (deduped_columns, None)
 
 
+def _aggregate_dimension_combination(
+    connection: Any,
+    dim_cols: Sequence[str],
+    where_sql: str,
+    where_params: Sequence[Any],
+    min_mac: int,
+) -> pd.DataFrame:
+    """Return grouped sweep rows for one dimension combination."""
+    dim_select = ", ".join(_quote_identifier(column) for column in dim_cols)
+    aggregate_sql = f"""
+        SELECT
+            {dim_select},
+            SUM({_quote_identifier("MAC")}) AS Sum_MAC,
+            SUM({_quote_identifier("MOC")}) AS Sum_MOC,
+            SUM({_quote_identifier("MEC")}) AS Sum_MEC,
+            SUM({_quote_identifier("MAF")}) AS Sum_MAF,
+            SUM({_quote_identifier("MEF")}) AS Sum_MEF
+        FROM analysis_source
+        WHERE {where_sql}
+        GROUP BY {dim_select}
+        HAVING SUM({_quote_identifier("MAC")}) >= ?
+    """
+    return connection.execute(aggregate_sql, [*where_params, min_mac]).df()
+
+
+def _auto_screen_metric(sort_by: str) -> str:
+    """Choose the metric used to rank auto-discovered dimensions."""
+    return "AE_Ratio_Count" if sort_by == "AE_Ratio_Count" else "AE_Ratio_Amount"
+
+
+def _score_auto_screen_dimension(
+    connection: Any,
+    column_name: str,
+    where_sql: str,
+    where_params: Sequence[Any],
+    min_mac: int,
+    metric_name: str,
+) -> Optional[float]:
+    """Score a dimension by the largest absolute A/E deviation from 1.0."""
+    grouped = _aggregate_dimension_combination(connection, [column_name], where_sql, where_params, min_mac)
+    if grouped.empty:
+        return None
+
+    grouped["AE_Ratio_Count"] = grouped["Sum_MAC"] / grouped["Sum_MEC"]
+    grouped["AE_Ratio_Amount"] = grouped["Sum_MAF"] / grouped["Sum_MEF"]
+    metric_series = grouped[metric_name].replace([float("inf"), float("-inf")], pd.NA).dropna()
+    if metric_series.empty:
+        return None
+
+    return float((metric_series.astype(float) - 1.0).abs().max())
+
+
+def _rank_auto_screened_dimensions(
+    connection: Any,
+    candidate_columns: Sequence[str],
+    where_sql: str,
+    where_params: Sequence[Any],
+    min_mac: int,
+    sort_by: str,
+    limit: int = AUTO_DIMENSION_SCREEN_LIMIT,
+) -> list[str]:
+    """Return the top-scoring auto-discovered dimensions for multiway sweeps."""
+    metric_name = _auto_screen_metric(sort_by)
+    scored_dimensions: list[tuple[int, float, str]] = []
+
+    for index, column_name in enumerate(candidate_columns):
+        score = _score_auto_screen_dimension(
+            connection,
+            column_name,
+            where_sql,
+            where_params,
+            min_mac,
+            metric_name,
+        )
+        if score is None:
+            continue
+        scored_dimensions.append((index, score, column_name))
+
+    scored_dimensions.sort(key=lambda item: (-item[1], item[0]))
+    return [column_name for _, _, column_name in scored_dimensions[:limit]]
+
+
 def run_dimensional_sweep(
     depth: int = 1,
     filters: Optional[List[dict[str, Any]]] = None,
@@ -449,25 +534,34 @@ def run_dimensional_sweep(
             )
 
         where_sql, where_params = _build_where_clause(normalized_filters or [])
+        if normalized_selected_columns:
+            requested_combinations = math.comb(len(dim_columns), depth)
+            if requested_combinations > MAX_EXPLICIT_COMBINATIONS:
+                return _error_payload(
+                    "Requested explicit sweep dimensions would generate too many combinations.",
+                    available_columns=sorted(dim_columns),
+                    extra={
+                        "requested_combination_count": requested_combinations,
+                        "max_supported_combinations": MAX_EXPLICIT_COMBINATIONS,
+                    },
+                )
+        elif depth >= 2:
+            screened_columns = _rank_auto_screened_dimensions(
+                connection,
+                dim_columns,
+                where_sql,
+                where_params,
+                min_mac,
+                sort_by,
+            )
+            if len(screened_columns) >= depth:
+                dim_columns = screened_columns
+
         combo_list = list(combinations(dim_columns, depth))
         all_results: List[dict[str, Any]] = []
 
         for dim_cols in combo_list:
-            dim_select = ", ".join(_quote_identifier(column) for column in dim_cols)
-            aggregate_sql = f"""
-                SELECT
-                    {dim_select},
-                    SUM({_quote_identifier("MAC")}) AS Sum_MAC,
-                    SUM({_quote_identifier("MOC")}) AS Sum_MOC,
-                    SUM({_quote_identifier("MEC")}) AS Sum_MEC,
-                    SUM({_quote_identifier("MAF")}) AS Sum_MAF,
-                    SUM({_quote_identifier("MEF")}) AS Sum_MEF
-                FROM analysis_source
-                WHERE {where_sql}
-                GROUP BY {dim_select}
-                HAVING SUM({_quote_identifier("MAC")}) >= ?
-            """
-            grouped = connection.execute(aggregate_sql, [*where_params, min_mac]).df()
+            grouped = _aggregate_dimension_combination(connection, dim_cols, where_sql, where_params, min_mac)
             if grouped.empty:
                 continue
 

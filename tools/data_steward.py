@@ -307,7 +307,19 @@ def create_categorical_bands(
     try:
         if strategy == "quantiles":
             n = bins if bins is not None else 4
-            df[new_col] = pd.qcut(df[source_column], q=n, labels=False, duplicates="drop")
+            quantile_bands = pd.qcut(df[source_column], q=n, labels=False, duplicates="drop")
+            realized_bins = int(quantile_bands.dropna().nunique())
+            if realized_bins < 3:
+                return json.dumps(
+                    {
+                        "error": (
+                            f"Quantile banding for '{source_column}' produced only {realized_bins} realized bin(s); "
+                            "need at least 3 to keep the engineered feature."
+                        )
+                    },
+                    indent=2,
+                )
+            df[new_col] = quantile_bands
             df[new_col] = df[new_col].astype(str)  # JSON-friendly categorical
         elif strategy == "equal_width":
             n = bins if bins is not None else 5
