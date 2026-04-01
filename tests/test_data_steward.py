@@ -131,6 +131,17 @@ def test_run_actuarial_data_checks_keeps_actuarial_fields_numerical(tmp_path):
         assert feature_classification[col] == "numerical"
 
 
+def test_run_actuarial_data_checks_keeps_face_amount_and_issue_age_numerical(tmp_path):
+    source = tmp_path / "inforce.csv"
+    source.write_text(FIXTURE_PATH.read_text())
+
+    result = json.loads(data_steward.run_actuarial_data_checks(str(source)))
+    feature_classification = result["feature_classification"]
+
+    assert feature_classification["Face_Amount"] == "numerical"
+    assert feature_classification["Issue_Age"] == "numerical"
+
+
 def test_profile_dataset_supports_parquet_input(tmp_path):
     source_df = pd.read_csv(FIXTURE_PATH)
     source = tmp_path / "inforce.parquet"

@@ -284,6 +284,99 @@ def test_sweep_supports_numeric_filters(tmp_path, monkeypatch):
     assert rows["Gender=M"]["Sum_MAC"] == 2
 
 
+def test_duration_is_eligible_as_an_explicit_sweep_dimension(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+
+    result = json.loads(
+        run_dimensional_sweep(
+            depth=1,
+            selected_columns=["Duration"],
+            top_n=20,
+            data_path=str(analysis_path),
+        )
+    )
+
+    assert "error" not in result
+    assert any(row["Dimensions"].startswith("Duration=") for row in result["results"])
+
+
+def test_raw_face_amount_is_not_an_eligible_sweep_dimension(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+
+    result = json.loads(
+        run_dimensional_sweep(
+            depth=1,
+            selected_columns=["Face_Amount"],
+            top_n=20,
+            data_path=str(analysis_path),
+        )
+    )
+
+    assert result["error"] == "Column 'Face_Amount' is not eligible as a sweep dimension."
+    assert "Duration" in result["available_columns"]
+    assert "Face_Amount" not in result["available_columns"]
+    assert "Issue_Age" not in result["available_columns"]
+
+
+def test_raw_issue_age_is_not_an_eligible_sweep_dimension(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+
+    result = json.loads(
+        run_dimensional_sweep(
+            depth=1,
+            selected_columns=["Issue_Age"],
+            top_n=20,
+            data_path=str(analysis_path),
+        )
+    )
+
+    assert result["error"] == "Column 'Issue_Age' is not eligible as a sweep dimension."
+    assert "Duration" in result["available_columns"]
+    assert "Face_Amount" not in result["available_columns"]
+    assert "Issue_Age" not in result["available_columns"]
+
+
+def test_auto_sweep_excludes_raw_face_amount_and_issue_age_but_includes_duration(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+
+    result = json.loads(
+        run_dimensional_sweep(
+            depth=1,
+            top_n=200,
+            data_path=str(analysis_path),
+        )
+    )
+
+    dimensions = [row["Dimensions"] for row in result["results"]]
+    assert any(dimension.startswith("Duration=") for dimension in dimensions)
+    assert not any(dimension.startswith("Face_Amount=") for dimension in dimensions)
+    assert not any(dimension.startswith("Issue_Age=") for dimension in dimensions)
+
+
 def test_sweep_supports_string_filters(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)

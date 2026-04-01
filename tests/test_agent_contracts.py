@@ -519,6 +519,190 @@ def test_actuary_agent_returns_missing_column_guidance_for_unprepared_feature(tm
     assert "Run Data Steward first" in response
 
 
+def test_actuary_agent_treats_objective_columns_alias_as_all_categorical_columns_for_1_way(
+    tmp_path, monkeypatch
+):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    captured = {}
+
+    def fake_run_dimensional_sweep(**kwargs):
+        captured.update(kwargs)
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "Dimensions": "Gender=F",
+                        "Sum_MAC": 2,
+                        "AE_Ratio_Count": 1.1,
+                        "AE_Ratio_Amount": 1.0,
+                        "AE_Count_CI": [0.7, 1.6],
+                        "AE_Amount_CI": [0.6, 1.5],
+                    }
+                ],
+                "depth": 1,
+                "output_path": "data/output/sweep_summary_1_all_dimensions.csv",
+                "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
+            }
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_actuary_module, "run_dimensional_sweep", fake_run_dimensional_sweep)
+
+    agent = ActuaryAgent()
+    response = agent.run("Run a 1-way dimensional sweep on all the objective columns.")
+
+    assert captured["depth"] == 1
+    assert captured["selected_columns"] == ["Gender", "Smoker", "Risk_Class", "Issue_Age_band"]
+    assert "using all categorical columns" in response
+
+
+def test_actuary_agent_treats_categorical_columns_alias_as_all_categorical_columns_for_2_way(
+    tmp_path, monkeypatch
+):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    captured = {}
+
+    def fake_run_dimensional_sweep(**kwargs):
+        captured.update(kwargs)
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "Dimensions": "Gender=F | Smoker=Yes",
+                        "Sum_MAC": 2,
+                        "AE_Ratio_Count": 1.1,
+                        "AE_Ratio_Amount": 1.0,
+                        "AE_Count_CI": [0.7, 1.6],
+                        "AE_Amount_CI": [0.6, 1.5],
+                    }
+                ],
+                "depth": 2,
+                "output_path": "data/output/sweep_summary_2_all_dimensions.csv",
+                "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_2.csv",
+            }
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_actuary_module, "run_dimensional_sweep", fake_run_dimensional_sweep)
+
+    agent = ActuaryAgent()
+    response = agent.run(
+        "Run a 2-way dimensional sweep on all the categorical columns where Smoker = Yes and rank cohorts by AE_Ratio_Amount."
+    )
+
+    assert captured["depth"] == 2
+    assert captured["selected_columns"] == ["Gender", "Smoker", "Risk_Class", "Issue_Age_band"]
+    assert captured["filters"] == [{"column": "Smoker", "operator": "=", "value": "Yes"}]
+    assert captured["sort_by"] == "AE_Ratio_Amount"
+    assert "using all categorical columns with filters Smoker = Yes" in response
+
+
+def test_actuary_agent_treats_all_eligible_dimensions_alias_as_auto_selected_dimensions(
+    tmp_path, monkeypatch
+):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    captured = {}
+
+    def fake_run_dimensional_sweep(**kwargs):
+        captured.update(kwargs)
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "Dimensions": "Gender=F",
+                        "Sum_MAC": 2,
+                        "AE_Ratio_Count": 1.1,
+                        "AE_Ratio_Amount": 1.0,
+                        "AE_Count_CI": [0.7, 1.6],
+                        "AE_Amount_CI": [0.6, 1.5],
+                    }
+                ],
+                "depth": 1,
+                "output_path": "data/output/sweep_summary_1_all_dimensions.csv",
+                "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
+            }
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_actuary_module, "run_dimensional_sweep", fake_run_dimensional_sweep)
+
+    agent = ActuaryAgent()
+    response = agent.run("Run a 1-way dimensional sweep on all eligible dimensions.")
+
+    assert captured["depth"] == 1
+    assert captured["selected_columns"] is None
+    assert "using all eligible dimensions" in response
+
+
+def test_actuary_agent_explicit_columns_override_objective_columns_alias(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    captured = {}
+
+    def fake_run_dimensional_sweep(**kwargs):
+        captured.update(kwargs)
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "Dimensions": "Gender=F",
+                        "Sum_MAC": 2,
+                        "AE_Ratio_Count": 1.1,
+                        "AE_Ratio_Amount": 1.0,
+                        "AE_Count_CI": [0.7, 1.6],
+                        "AE_Amount_CI": [0.6, 1.5],
+                    }
+                ],
+                "depth": 1,
+                "output_path": "data/output/sweep_summary_1_gender_smoker.csv",
+                "latest_output_path": "data/output/sweep_summary.csv",
+                "latest_depth_output_path": "data/output/sweep_summary_latest_1.csv",
+            }
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_actuary_module, "run_dimensional_sweep", fake_run_dimensional_sweep)
+
+    agent = ActuaryAgent()
+    response = agent.run("Run a 1-way dimensional sweep on all objective columns and Gender and Smoker.")
+
+    assert "requested column(s) not found" not in response
+    assert captured["selected_columns"] == ["Gender", "Smoker"]
+
+
+def test_actuary_agent_keeps_missing_column_guidance_for_unrecognized_all_alias_phrase(tmp_path, monkeypatch):
+    output_dir = tmp_path / "data" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = output_dir / "analysis_inforce.parquet"
+    _write_analysis_parquet(analysis_path)
+
+    monkeypatch.chdir(tmp_path)
+    agent = ActuaryAgent()
+
+    response = agent.run("Run a 1-way dimensional sweep on all the business columns.")
+
+    assert "requested column(s) not found" in response
+    assert "Run Data Steward first" in response
+
+
 def test_actuary_agent_extracts_structured_filters_deterministically(tmp_path, monkeypatch):
     output_dir = tmp_path / "data" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)

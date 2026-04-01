@@ -4,6 +4,7 @@ import pandas as pd
 
 from tools.data_io import (
     get_tabular_columns,
+    get_tabular_column_types,
     list_excel_sheets,
     load_tabular_input,
     resolve_prepared_analysis_path,
@@ -53,6 +54,18 @@ def test_get_tabular_columns_reads_parquet_schema_without_loading_rows(tmp_path)
     source_df.to_parquet(parquet_path, index=False)
 
     assert get_tabular_columns(str(parquet_path)) == list(source_df.columns)
+
+
+def test_get_tabular_column_types_reads_parquet_schema_types(tmp_path):
+    source_df = pd.read_csv(FIXTURE_PATH)
+    parquet_path = tmp_path / "inforce.parquet"
+    source_df.to_parquet(parquet_path, index=False)
+
+    types = get_tabular_column_types(str(parquet_path))
+
+    assert types["Gender"] == "string"
+    assert types["Issue_Age"] == "int64"
+    assert types["MEC"] == "double"
 
 
 def test_resolve_prepared_analysis_path_falls_back_to_legacy_csv(tmp_path, monkeypatch):
