@@ -1,7 +1,6 @@
 """Supervisor orchestrator for routing Experience Study AI Copilot requests."""
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -14,7 +13,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agents.agent_actuary import ActuaryAgent
 from agents.agent_analyst import AnalystAgent
-from agents.openai_compat import build_openai_client
+from agents.model_config import resolve_router_model
+from agents.openai_compat import (
+    build_openai_client,
+    log_openai_error,
+    openai_error_type,
+)
 from agents.agent_steward import DataStewardAgent
 
 Intent = Literal["GENERAL", "DATA_PREP", "ANALYSIS", "VISUALIZE", "CONTINUE"]
@@ -24,10 +28,10 @@ class StudyOrchestrator:
 
     def __init__(
         self,
-        classifier_model: str = "gpt-5-nano",
+        classifier_model: Optional[str] = None,
         status_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
-        self.classifier_model = classifier_model
+        self.classifier_model = resolve_router_model(classifier_model)
         self.status_callback = status_callback
         self.client = build_openai_client()
 
@@ -356,10 +360,13 @@ class StudyOrchestrator:
                     {"role": "system", "content": "You are a precise intent classifier."},
                     {"role": "user", "content": f"{prompt}\n\nUser request:\n{user_query}"},
                 ],
-                temperature=0,
             )
-        except Exception:
-            self._emit_status("Orchestrator: classifier unavailable, falling back to local heuristics.")
+        except Exception as exc:
+            log_openai_error("Orchestrator", "Classifier request", exc)
+            self._emit_status(
+                "Orchestrator: classifier unavailable "
+                f"({openai_error_type(exc)}), falling back to local heuristics."
+            )
             intent = self._heuristic_classify(user_query)
             self._emit_status(f"Orchestrator: intent classified as {intent}.")
             return intent

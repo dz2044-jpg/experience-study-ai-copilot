@@ -236,9 +236,21 @@ Agents use the OpenAI Python SDK when `OPENAI_API_KEY` is available. Create a `.
 
 ```env
 OPENAI_API_KEY=sk-...
+
+# Optional chat-completions model overrides
+# OPENAI_ROUTER_MODEL=gpt-5-nano
+# OPENAI_STEWARD_MODEL=gpt-5-mini
+# OPENAI_ACTUARY_MODEL=gpt-5
 ```
 
 If the key is unavailable, parts of the system fall back to deterministic routing behavior where implemented.
+
+Default OpenAI model configuration:
+
+- Orchestrator classifier: `gpt-5-nano`
+- Data Steward tool-calling: `gpt-5-mini`
+- Lead Actuary tool-calling: `gpt-5`
+- Analyst: deterministic visualization flow, no OpenAI call in the current runtime path
 
 ### Run The Streamlit App
 

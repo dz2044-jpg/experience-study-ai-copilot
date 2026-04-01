@@ -11,7 +11,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from agents.openai_compat import build_openai_client
+from agents.model_config import resolve_actuary_model
+from agents.openai_compat import (
+    build_openai_client,
+    log_openai_error,
+    openai_error_type,
+)
 from agents.schemas import DimensionalSweepSchema
 from tools.data_io import (
     CANONICAL_ANALYSIS_OUTPUT_PATH,
@@ -104,10 +109,10 @@ class ActuaryAgent:
 
     def __init__(
         self,
-        model: str = "gpt-5.4",
+        model: Optional[str] = None,
         status_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
-        self.model = model
+        self.model = resolve_actuary_model(model)
         self.client = build_openai_client()
         self.status_callback = status_callback
         self.latest_output_path: Optional[str] = None
@@ -710,8 +715,12 @@ class ActuaryAgent:
                     tools=self._tools_spec(),
                     tool_choice="auto",
                 )
-            except Exception:
-                self._emit_status("Lead Actuary: tool-calling is unavailable, falling back to deterministic logic.")
+            except Exception as exc:
+                log_openai_error("Lead Actuary", "Tool-calling request", exc)
+                self._emit_status(
+                    "Lead Actuary: tool-calling is unavailable "
+                    f"({openai_error_type(exc)}), falling back to deterministic logic."
+                )
                 return self._fallback_route(user_message)
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []

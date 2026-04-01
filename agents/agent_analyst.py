@@ -1,7 +1,6 @@
 """Actuarial Data Analyst Agent: generates visual A/E reports."""
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -14,7 +13,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from agents.openai_compat import build_openai_client
 from agents.schemas import VisualizationSchema
 from tools.visualization import generate_combined_report
 
@@ -39,15 +37,16 @@ report was generated, which metric was used, and that it is available in the app
 
 
 class AnalystAgent:
-    """Agent that turns aggregated A/E data into interactive visual reports."""
+    """Agent that turns aggregated A/E data into deterministic visual reports."""
 
     def __init__(
         self,
-        model: str = "gpt-5.3-codex",
+        model: Optional[str] = None,
         status_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
-        self.model = model
-        self.client = build_openai_client()
+        # Visualization currently stays deterministic; the compatibility field is unused.
+        self.model = model.strip() if model and model.strip() else None
+        self.client = None
         self.status_callback = status_callback
         self.last_data_path_used: Optional[str] = None
 
@@ -355,7 +354,7 @@ class AnalystAgent:
         return (str(filtered_path), None)
 
     def _tools_spec(self) -> list[dict[str, Any]]:
-        """Define visualization tools for OpenAI function calling."""
+        """Retain the visualization tool schema for contract tests and future compatibility."""
         return [
             {
                 "type": "function",
@@ -424,7 +423,7 @@ class AnalystAgent:
             return f"Unable to generate visualization report: {exc}"
 
     def run(self, user_message: str, data_path: Optional[str] = None) -> str:
-        """Handle visualization requests using OpenAI tool calling."""
+        """Handle visualization requests deterministically from the resolved sweep artifact."""
         self.last_data_path_used = data_path
 
         resolved_data_path = data_path or self._extract_csv_path(user_message)

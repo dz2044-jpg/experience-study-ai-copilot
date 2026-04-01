@@ -1,7 +1,6 @@
 """Data Steward Agent: profiles, validates, and engineers inforce data."""
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -12,7 +11,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from agents.openai_compat import build_openai_client
+from agents.model_config import resolve_steward_model
+from agents.openai_compat import (
+    build_openai_client,
+    log_openai_error,
+    openai_error_type,
+)
 from agents.schemas import (
     CategoricalBandingSchema,
     ProfileDatasetSchema,
@@ -53,10 +57,10 @@ class DataStewardAgent:
 
     def __init__(
         self,
-        model: str = "gpt-5-mini",
+        model: Optional[str] = None,
         status_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
-        self.model = model
+        self.model = resolve_steward_model(model)
         self.client = build_openai_client()
         self.status_callback = status_callback
 
@@ -410,9 +414,13 @@ class DataStewardAgent:
                     tools=self._tools_spec(),
                     tool_choice="auto",
                 )
-            except Exception:
+            except Exception as exc:
                 # Keep deterministic local usability when network/proxy is unavailable.
-                self._emit_status("Data Steward: tool-calling is unavailable, falling back to deterministic logic.")
+                log_openai_error("Data Steward", "Tool-calling request", exc)
+                self._emit_status(
+                    "Data Steward: tool-calling is unavailable "
+                    f"({openai_error_type(exc)}), falling back to deterministic logic."
+                )
                 return self._fallback_route(user_message)
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []

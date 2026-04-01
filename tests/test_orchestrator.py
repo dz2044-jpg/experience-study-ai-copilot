@@ -253,3 +253,57 @@ def test_orchestrator_returns_controlled_error_when_requested_depth_alias_is_mis
     result = orchestrator.process_query("Generate visualization for Gender only.")
 
     assert "fresh 1-way sweep artifact" in result
+
+
+def test_orchestrator_classifier_omits_temperature_parameter(monkeypatch):
+    monkeypatch.delenv("OPENAI_ROUTER_MODEL", raising=False)
+
+    captured_kwargs = {}
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            message = type("Message", (), {"content": '{"intent": "DATA_PREP"}'})()
+            choice = type("Choice", (), {"message": message})()
+            return type("Completion", (), {"choices": [choice]})()
+
+    fake_client = type(
+        "FakeClient",
+        (),
+        {"chat": type("FakeChat", (), {"completions": _FakeCompletions()})()},
+    )()
+
+    orchestrator = StudyOrchestrator()
+    orchestrator.client = fake_client
+
+    intent = orchestrator._classify_intent("profile the inforce dataset")
+
+    assert intent == "DATA_PREP"
+    assert captured_kwargs["model"] == "gpt-5-nano"
+    assert "temperature" not in captured_kwargs
+
+
+def test_orchestrator_classifier_fallback_reports_error_type(monkeypatch, capsys):
+    monkeypatch.delenv("OPENAI_ROUTER_MODEL", raising=False)
+
+    statuses = []
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            raise RuntimeError("router exploded")
+
+    fake_client = type(
+        "FakeClient",
+        (),
+        {"chat": type("FakeChat", (), {"completions": _FakeCompletions()})()},
+    )()
+
+    orchestrator = StudyOrchestrator(status_callback=statuses.append)
+    orchestrator.client = fake_client
+
+    intent = orchestrator._classify_intent("run a 1-way sweep")
+
+    assert intent == "ANALYSIS"
+    assert any("classifier unavailable (RuntimeError)" in status for status in statuses)
+    captured = capsys.readouterr()
+    assert "RuntimeError: router exploded" in captured.err
