@@ -88,6 +88,35 @@ def get_tabular_columns(path: str, sheet_name: Optional[str] = None) -> list[str
     ).columns.tolist()
 
 
+def get_tabular_column_types(path: str, sheet_name: Optional[str] = None) -> dict[str, str]:
+    """Return inferred or schema-backed column type names for a supported tabular input."""
+    input_path = Path(path)
+    suffix = input_path.suffix.lower()
+
+    if suffix not in SUPPORTED_TABULAR_SUFFIXES:
+        raise ValueError(
+            f"Unsupported file type: {suffix or '<none>'}. "
+            f"Supported formats: {sorted(SUPPORTED_TABULAR_SUFFIXES)}"
+        )
+
+    if suffix == ".csv":
+        sample = pd.read_csv(input_path, nrows=1000)
+        return {column: str(dtype) for column, dtype in sample.dtypes.items()}
+
+    if suffix == ".parquet":
+        schema = pq.read_schema(input_path)
+        return {field.name: str(field.type) for field in schema}
+
+    resolved_sheet_name = _resolve_sheet_name(input_path, sheet_name)
+    sample = pd.read_excel(
+        input_path,
+        sheet_name=resolved_sheet_name,
+        engine="openpyxl",
+        nrows=1000,
+    )
+    return {column: str(dtype) for column, dtype in sample.dtypes.items()}
+
+
 def _candidate_prepared_analysis_paths(data_path: Optional[str] = None) -> list[Path]:
     """Return Parquet-first candidates for the prepared analysis artifact."""
     requested = Path(data_path or CANONICAL_ANALYSIS_OUTPUT_PATH)

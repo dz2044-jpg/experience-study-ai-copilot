@@ -127,7 +127,11 @@ EXCLUDED_DIMENSIONS = {
     "MAF",
     "MEF",
     "COLA",
-    "Duration",
+}
+SEMANTIC_NUMERIC_NON_DIMENSIONS = {
+    "Face_Amount",
+    "Issue_Age",
+    "Age",
 }
 
 CORE_COLUMNS = ["MAC", "MOC", "MEC", "MAF", "MEF"]
@@ -247,7 +251,7 @@ def _identify_categorical_columns(connection: Any, schema_df: pd.DataFrame) -> l
     for row in schema_df.itertuples(index=False):
         column_name = str(row.column_name)
         column_type = str(row.column_type).upper()
-        if column_name in EXCLUDED_DIMENSIONS:
+        if column_name in EXCLUDED_DIMENSIONS or column_name in SEMANTIC_NUMERIC_NON_DIMENSIONS:
             continue
         candidate_rows.append((column_name, column_type))
 
@@ -367,14 +371,20 @@ def _validate_selected_columns(
             ),
         )
 
-    invalid_dimensions = [column for column in selected_columns if column in EXCLUDED_DIMENSIONS]
+    invalid_dimensions = [
+        column
+        for column in selected_columns
+        if column in EXCLUDED_DIMENSIONS or column in SEMANTIC_NUMERIC_NON_DIMENSIONS
+    ]
     if invalid_dimensions:
         return (
             None,
             _error_payload(
                 f"Column '{invalid_dimensions[0]}' is not eligible as a sweep dimension.",
                 available_columns=sorted(
-                    column for column in available_columns if column not in EXCLUDED_DIMENSIONS
+                    column
+                    for column in available_columns
+                    if column not in EXCLUDED_DIMENSIONS and column not in SEMANTIC_NUMERIC_NON_DIMENSIONS
                 ),
             ),
         )

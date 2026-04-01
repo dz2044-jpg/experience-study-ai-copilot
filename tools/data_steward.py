@@ -26,6 +26,7 @@ _SESSION_START_TIME = time.time()
 
 ANALYSIS_OUTPUT_PATH = CANONICAL_ANALYSIS_OUTPUT_PATH
 ACTUARIAL_NUMERICS = ["MAC", "MEC", "MAF", "MEF", "MOC"]
+SEMANTIC_NUMERICAL_FEATURES = {"Face_Amount", "Issue_Age", "Age"}
 RAW_MISSING_TOKENS = {"", "na", "nan", "null", "none", "n/a"}
 
 
@@ -89,7 +90,7 @@ def _classify_feature_type(df: pd.DataFrame, column: str) -> str:
     Core actuarial measure fields remain numerical even when they have low cardinality
     because their semantic meaning is quantitative rather than dimensional.
     """
-    if column in ACTUARIAL_NUMERICS:
+    if column in ACTUARIAL_NUMERICS or column in SEMANTIC_NUMERICAL_FEATURES:
         return "numerical"
 
     series = df[column]
