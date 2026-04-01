@@ -24,15 +24,68 @@ from agents.schemas import (
 )
 
 from tools.data_steward import (
+    CategoricalBandSpec,
     create_categorical_bands,
+    create_categorical_bands_batch,
     profile_dataset,
     regroup_categorical_features,
     run_actuarial_data_checks,
 )
-from tools.data_io import CANONICAL_ANALYSIS_OUTPUT_PATH, resolve_prepared_analysis_path
+from tools.data_io import (
+    CANONICAL_ANALYSIS_OUTPUT_PATH,
+    get_tabular_columns,
+    resolve_prepared_analysis_path,
+)
 
 RAW_INPUT_PATH_RE = re.compile(r"(?<!\w)((?:/|data/)?[\w./-]+\.(?:csv|parquet|xlsx))(?!\w)", re.IGNORECASE)
 DEFAULT_RAW_INPUT_PATH = "data/input/synthetic_inforce.csv"
+BANDING_STRATEGY_PATTERN = (
+    r"equal[-\s]+width|"
+    r"same[-\s]+quantile|"
+    r"equal[-\s]+quantile|"
+    r"quantiles?"
+)
+BANDING_CLAUSE_RE = re.compile(
+    rf"(?:\b(?:create|add|make)\b\s+)?"
+    rf"(?P<bins>\d+)\s+"
+    rf"(?P<strategy>{BANDING_STRATEGY_PATTERN})\s+"
+    rf"bands?\s+(?:for|on)\s+"
+    rf"(?P<column>.+?)"
+    rf"(?=(?:\s*,?\s*(?:and|then)\s+(?:\b(?:create|add|make)\b\s+)?\d+\s+(?:{BANDING_STRATEGY_PATTERN})\s+bands?\s+(?:for|on)\s+)|[?.!]|$)",
+    re.IGNORECASE,
+)
+MIXED_BANDING_BLOCKERS = (
+    "profile",
+    "validate",
+    "schema",
+    "null count",
+    "data type",
+    "column names",
+    "list columns",
+    "show columns",
+    "check the data",
+    "check data",
+    "regroup",
+)
+IGNORABLE_BANDING_TOKENS = {
+    "a",
+    "add",
+    "an",
+    "and",
+    "also",
+    "create",
+    "for",
+    "from",
+    "in",
+    "kindly",
+    "make",
+    "please",
+    "then",
+    "the",
+    "to",
+    "use",
+    "using",
+}
 
 
 SYSTEM_PROMPT = """
@@ -272,6 +325,151 @@ class DataStewardAgent:
         profile_json = profile_dataset(data_path=active_data_path)
         return self._format_profile_summary(profile_json, active_data_path, user_message)
 
+    @staticmethod
+    def _normalize_banding_strategy(strategy_text: str) -> Optional[str]:
+        """Map natural-language banding phrases to tool strategies."""
+        normalized = re.sub(r"[-\s]+", " ", strategy_text.strip().lower())
+        if normalized == "equal width":
+            return "equal_width"
+        if normalized in {"quantile", "quantiles", "equal quantile", "same quantile"}:
+            return "quantiles"
+        return None
+
+    @staticmethod
+    def _clean_requested_band_column(raw_column: str) -> str:
+        """Remove banding-specific filler text from a requested column token."""
+        cleaned = raw_column.strip(" `.,")
+        cleaned = re.sub(r"^(?:the\s+)", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s+columns?$", "", cleaned, flags=re.IGNORECASE)
+        return cleaned.strip(" `.,")
+
+    @classmethod
+    def _resolve_requested_band_column(cls, raw_column: str, available_columns: list[str]) -> str:
+        """Resolve a requested banding column against available dataset columns."""
+        cleaned = cls._clean_requested_band_column(raw_column)
+        if not available_columns:
+            return re.sub(r"[^A-Za-z0-9]+", "_", cleaned).strip("_")
+
+        column_lookup = {cls._normalize_column_name(column): column for column in available_columns}
+        normalized_cleaned = cls._normalize_column_name(cleaned)
+        if normalized_cleaned in column_lookup:
+            return column_lookup[normalized_cleaned]
+
+        underscored = re.sub(r"[^A-Za-z0-9]+", "_", cleaned).strip("_")
+        return column_lookup.get(cls._normalize_column_name(underscored), underscored)
+
+    @staticmethod
+    def _load_bandable_columns(data_path: str) -> list[str]:
+        """Load available source columns for case-insensitive band request resolution."""
+        resolved_path = resolve_prepared_analysis_path(data_path)
+        if not resolved_path.exists():
+            return []
+        try:
+            return get_tabular_columns(str(resolved_path))
+        except Exception:
+            return []
+
+    @staticmethod
+    def _leftover_banding_tokens(user_message: str, matches: list[re.Match[str]]) -> list[str]:
+        """Return non-band-request tokens left after removing parsed banding clauses."""
+        fragments: list[str] = []
+        cursor = 0
+        for match in matches:
+            fragments.append(user_message[cursor:match.start()])
+            cursor = match.end()
+        fragments.append(user_message[cursor:])
+        leftover = " ".join(fragments).lower()
+        return [
+            token
+            for token in re.findall(r"[a-z0-9_/-]+", leftover)
+            if token not in IGNORABLE_BANDING_TOKENS
+        ]
+
+    @classmethod
+    def _parse_deterministic_band_specs(
+        cls,
+        user_message: str,
+        data_path: str,
+    ) -> Optional[list[CategoricalBandSpec]]:
+        """Parse explicit banding-only prompts into deterministic band specs."""
+        lowered = user_message.lower()
+        if "band" not in lowered:
+            return None
+        if any(blocker in lowered for blocker in MIXED_BANDING_BLOCKERS):
+            return None
+
+        available_columns = cls._load_bandable_columns(data_path)
+        matches = list(BANDING_CLAUSE_RE.finditer(user_message))
+        if not matches:
+            return None
+
+        leftover_tokens = cls._leftover_banding_tokens(user_message, matches)
+        if leftover_tokens:
+            return None
+
+        band_specs: list[CategoricalBandSpec] = []
+        for match in matches:
+            strategy = cls._normalize_banding_strategy(match.group("strategy"))
+            if strategy is None:
+                return None
+
+            source_column = cls._resolve_requested_band_column(match.group("column"), available_columns)
+            band_specs.append(
+                CategoricalBandSpec(
+                    source_column=source_column,
+                    strategy=strategy,
+                    bins=int(match.group("bins")),
+                )
+            )
+
+        return band_specs
+
+    @staticmethod
+    def _format_deterministic_banding_summary(result_json: str, source_path: str) -> str:
+        """Render a consistent human summary for deterministic banding responses."""
+        payload = json.loads(result_json)
+        if payload.get("error"):
+            return f"Unable to create categorical bands: {payload['error']}"
+
+        operations = payload.get("operations", [])
+        output_path = payload.get("output_path", CANONICAL_ANALYSIS_OUTPUT_PATH)
+        lines = [
+            f"Categorical banding complete. Output saved to `{output_path}`.",
+            f"Source data: `{source_path}`.",
+            "",
+            "Created features:",
+        ]
+
+        strategy_labels = {
+            "equal_width": "equal-width",
+            "quantiles": "quantile",
+            "custom": "custom",
+        }
+        for operation in operations:
+            lines.append(
+                f"- `{operation['new_column']}` from `{operation['source_column']}` "
+                f"using `{operation.get('bins', 'N/A')}` {strategy_labels.get(operation['strategy'], operation['strategy'])} bins."
+            )
+
+        return "\n".join(lines)
+
+    def _deterministic_banding_route(self, user_message: str) -> Optional[str]:
+        """Handle pure banding prompts deterministically before the LLM path."""
+        explicit_path = self._extract_tabular_path(user_message)
+        working_message = user_message.replace(explicit_path, " ") if explicit_path else user_message
+        active_data_path = explicit_path or DEFAULT_RAW_INPUT_PATH
+        band_specs = self._parse_deterministic_band_specs(working_message, active_data_path)
+        if band_specs is None:
+            return None
+
+        self._emit_status("Data Steward: applying deterministic categorical banding operations.")
+        result_json = create_categorical_bands_batch(
+            band_specs=band_specs,
+            source_path=active_data_path,
+            output_path=CANONICAL_ANALYSIS_OUTPUT_PATH,
+        )
+        return self._format_deterministic_banding_summary(result_json, active_data_path)
+
     def _execute_tool_with_context(
         self,
         tool_name: str,
@@ -393,6 +591,10 @@ class DataStewardAgent:
         deterministic_response = self._deterministic_schema_route(user_message)
         if deterministic_response is not None:
             return deterministic_response
+
+        deterministic_banding_response = self._deterministic_banding_route(user_message)
+        if deterministic_banding_response is not None:
+            return deterministic_banding_response
 
         if not self.client:
             self._emit_status("Data Steward: OpenAI is unavailable, using deterministic local tooling.")

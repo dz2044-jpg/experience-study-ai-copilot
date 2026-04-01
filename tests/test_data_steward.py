@@ -56,6 +56,57 @@ def test_session_aware_feature_engineering_appends_columns(tmp_path, monkeypatch
     assert "Risk_Class_regrouped" in df.columns
 
 
+def test_create_categorical_bands_batch_applies_multiple_specs_in_one_write(tmp_path, monkeypatch):
+    source = tmp_path / "inforce.csv"
+    source.write_text(FIXTURE_PATH.read_text())
+
+    output = tmp_path / "analysis_inforce.parquet"
+    monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
+    monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
+
+    result = json.loads(
+        data_steward.create_categorical_bands_batch(
+            band_specs=[
+                data_steward.CategoricalBandSpec("Issue_Age", "equal_width", bins=4),
+                data_steward.CategoricalBandSpec("Face_Amount", "quantiles", bins=3),
+            ],
+            source_path=str(source),
+        )
+    )
+
+    assert result["success"] is True
+    assert [operation["new_column"] for operation in result["operations"]] == [
+        "Issue_Age_band",
+        "Face_Amount_band",
+    ]
+
+    engineered = pd.read_parquet(output)
+    assert "Issue_Age_band" in engineered.columns
+    assert "Face_Amount_band" in engineered.columns
+
+
+def test_create_categorical_bands_batch_does_not_write_partial_output_when_later_spec_is_invalid(tmp_path, monkeypatch):
+    source = tmp_path / "inforce.csv"
+    source.write_text(FIXTURE_PATH.read_text())
+
+    output = tmp_path / "analysis_inforce.parquet"
+    monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
+    monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
+
+    result = json.loads(
+        data_steward.create_categorical_bands_batch(
+            band_specs=[
+                data_steward.CategoricalBandSpec("Issue_Age", "equal_width", bins=4),
+                data_steward.CategoricalBandSpec("Missing_Column", "quantiles", bins=3),
+            ],
+            source_path=str(source),
+        )
+    )
+
+    assert "not found" in result["error"]
+    assert not output.exists()
+
+
 def test_run_actuarial_data_checks_flags_non_numeric_raw_actuarial_values(tmp_path):
     source = tmp_path / "bad_inforce.csv"
     source.write_text(
@@ -169,6 +220,32 @@ def test_quantile_banding_returns_controlled_error_when_realized_bins_collapse_b
             source_column="Face_Amount",
             strategy="quantiles",
             bins=5,
+            source_path=str(source),
+        )
+    )
+
+    assert "produced only" in result["error"]
+    assert not output.exists()
+
+
+def test_create_categorical_bands_batch_does_not_write_partial_output_when_quantile_spec_fails(tmp_path, monkeypatch):
+    source_df = pd.concat([pd.read_csv(FIXTURE_PATH)] * 3, ignore_index=True)
+    source_df["Face_Amount"] = 100000
+    source_df.loc[source_df.index[-2:], "Face_Amount"] = 250000
+
+    source = tmp_path / "skewed_inforce.csv"
+    source_df.to_csv(source, index=False)
+
+    output = tmp_path / "analysis_inforce.parquet"
+    monkeypatch.setattr(data_steward, "ANALYSIS_OUTPUT_PATH", str(output))
+    monkeypatch.setattr(data_steward, "_SESSION_START_TIME", time.time() - 60)
+
+    result = json.loads(
+        data_steward.create_categorical_bands_batch(
+            band_specs=[
+                data_steward.CategoricalBandSpec("Issue_Age", "equal_width", bins=4),
+                data_steward.CategoricalBandSpec("Face_Amount", "quantiles", bins=5),
+            ],
             source_path=str(source),
         )
     )

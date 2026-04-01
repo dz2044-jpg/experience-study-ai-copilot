@@ -20,6 +20,14 @@ def _write_analysis_parquet(path: Path) -> None:
     pd.read_csv(FIXTURE_PATH).to_parquet(path, index=False)
 
 
+def _write_default_raw_input(tmp_path: Path) -> Path:
+    input_dir = tmp_path / "data" / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    source = input_dir / "synthetic_inforce.csv"
+    source.write_text(FIXTURE_PATH.read_text())
+    return source
+
+
 def test_dimensional_sweep_schema_exposes_selected_columns():
     schema = DimensionalSweepSchema.model_json_schema()
     assert "selected_columns" in schema["properties"]
@@ -141,6 +149,85 @@ def test_steward_agent_raw_schema_request_defaults_to_synthetic_input(monkeypatc
     assert "- `MAC`: `float64`; nulls: `0`" in response
     assert "- `MEF`: `float64`; nulls: `0`" in response
     assert "Gender" not in response
+
+
+def test_steward_agent_parses_single_equal_width_band_request(tmp_path, monkeypatch):
+    source = _write_default_raw_input(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    specs = DataStewardAgent._parse_deterministic_band_specs(
+        "Create 4 equal-width bands for the issue age column.",
+        str(source),
+    )
+
+    assert specs is not None
+    assert len(specs) == 1
+    assert specs[0].source_column == "Issue_Age"
+    assert specs[0].strategy == "equal_width"
+    assert specs[0].bins == 4
+
+
+def test_steward_agent_parses_multi_band_request_and_resolves_spaced_column_aliases(tmp_path, monkeypatch):
+    source = _write_default_raw_input(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    specs = DataStewardAgent._parse_deterministic_band_specs(
+        "create 4 equal width bands for issue_age, and 3 same quantile bands for face amount",
+        str(source),
+    )
+
+    assert specs is not None
+    assert [(spec.source_column, spec.strategy, spec.bins) for spec in specs] == [
+        ("Issue_Age", "equal_width", 4),
+        ("Face_Amount", "quantiles", 3),
+    ]
+
+
+def test_steward_agent_band_parser_returns_none_for_mixed_profile_and_banding_request(tmp_path, monkeypatch):
+    source = _write_default_raw_input(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    specs = DataStewardAgent._parse_deterministic_band_specs(
+        "Profile the dataset and create 4 equal width bands for issue_age.",
+        str(source),
+    )
+
+    assert specs is None
+
+
+def test_steward_agent_multi_band_request_returns_clean_first_turn_summary(tmp_path, monkeypatch):
+    _write_default_raw_input(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    agent = DataStewardAgent()
+    agent.client = object()
+
+    response = agent.run(
+        "create 4 equal width bands for issue_age, and 3 same quantile bands for face amount"
+    )
+
+    engineered = pd.read_parquet(tmp_path / "data" / "output" / "analysis_inforce.parquet")
+    assert "Issue_Age_band" in engineered.columns
+    assert "Face_Amount_band" in engineered.columns
+    assert "Categorical banding complete." in response
+    assert "`Issue_Age_band`" in response
+    assert "`Face_Amount_band`" in response
+    assert '"total_rows"' not in response
+
+
+def test_steward_agent_multi_band_request_is_repeatable_across_identical_prompts(tmp_path, monkeypatch):
+    _write_default_raw_input(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    agent = DataStewardAgent()
+    agent.client = object()
+    prompt = "create 4 equal width bands for issue_age, and 3 same quantile bands for face amount"
+
+    first = agent.run(prompt)
+    second = agent.run(prompt)
+
+    assert first == second
+    assert '"total_rows"' not in first
 
 
 def test_actuary_agent_runs_explicit_sweep_without_mapping_confirmation(tmp_path, monkeypatch):

@@ -5,11 +5,12 @@ CRITICAL: Never overwrite original user-uploaded data. All outputs save to
 data/output/analysis_inforce.parquet.
 """
 
+from dataclasses import dataclass
 import json
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import pandas as pd
 
@@ -26,6 +27,16 @@ _SESSION_START_TIME = time.time()
 ANALYSIS_OUTPUT_PATH = CANONICAL_ANALYSIS_OUTPUT_PATH
 ACTUARIAL_NUMERICS = ["MAC", "MEC", "MAF", "MEF", "MOC"]
 RAW_MISSING_TOKENS = {"", "na", "nan", "null", "none", "n/a"}
+
+
+@dataclass(frozen=True)
+class CategoricalBandSpec:
+    """Deterministic specification for a single categorical banding operation."""
+
+    source_column: str
+    strategy: str
+    bins: Optional[int] = None
+    custom_bins: Optional[list[float]] = None
 
 
 def _load_inforce(path: str, sheet_name: Optional[str] = None) -> pd.DataFrame:
@@ -278,11 +289,132 @@ def create_categorical_bands(
     Strategies: quantiles (pd.qcut), equal_width (pd.cut), custom (pd.cut with custom_bins).
     Saves to output_path; never overwrites source. Returns JSON success message.
     """
+    batch_result = create_categorical_bands_batch(
+        band_specs=[
+            CategoricalBandSpec(
+                source_column=source_column,
+                strategy=strategy,
+                bins=bins,
+                custom_bins=custom_bins,
+            )
+        ],
+        source_path=source_path,
+        output_path=output_path,
+        sheet_name=sheet_name,
+    )
+    payload = json.loads(batch_result)
+    if payload.get("error"):
+        return batch_result
+
+    operation = payload["operations"][0]
+    result = {
+        "success": True,
+        "new_column": operation["new_column"],
+        "output_path": payload["output_path"],
+        "strategy": operation["strategy"],
+        "bins": operation.get("bins"),
+    }
+    return json.dumps(result, indent=2)
+
+
+def _resolved_band_bins(spec: CategoricalBandSpec) -> Optional[int]:
+    """Resolve implicit default bin counts for supported strategies."""
+    if spec.strategy == "quantiles":
+        return spec.bins if spec.bins is not None else 4
+    if spec.strategy == "equal_width":
+        return spec.bins if spec.bins is not None else 5
+    return spec.bins
+
+
+def _validate_categorical_band_specs(
+    df: pd.DataFrame,
+    band_specs: Sequence[CategoricalBandSpec],
+) -> Optional[str]:
+    """Validate all requested band specs before mutating or writing output."""
+    if not band_specs:
+        return "No categorical band specifications were provided."
+
+    seen_new_columns: set[str] = set()
+    for spec in band_specs:
+        if spec.source_column not in df.columns:
+            return f"Column '{spec.source_column}' not found in dataset."
+
+        if not pd.api.types.is_numeric_dtype(df[spec.source_column]):
+            return f"Column '{spec.source_column}' must be numeric for banding."
+
+        if spec.strategy not in {"quantiles", "equal_width", "custom"}:
+            return f"Unknown strategy: {spec.strategy}. Use quantiles, equal_width, or custom."
+
+        resolved_bins = _resolved_band_bins(spec)
+        if spec.strategy in {"quantiles", "equal_width"} and (resolved_bins is None or resolved_bins < 1):
+            return f"Banding for '{spec.source_column}' requires a positive integer bin count."
+
+        if spec.strategy == "custom" and not spec.custom_bins:
+            return "custom strategy requires custom_bins list."
+
+        new_column = f"{spec.source_column}_band"
+        if new_column in seen_new_columns:
+            return (
+                f"Duplicate banding request for '{spec.source_column}' detected in the same prompt. "
+                "Each source column can be banded at most once per deterministic batch."
+            )
+        seen_new_columns.add(new_column)
+
+    return None
+
+
+def _build_categorical_band_series(
+    df: pd.DataFrame,
+    spec: CategoricalBandSpec,
+) -> tuple[Optional[pd.Series], Optional[str]]:
+    """Build a single categorical band series without mutating the source frame."""
+    try:
+        if spec.strategy == "quantiles":
+            resolved_bins = _resolved_band_bins(spec)
+            quantile_bands = pd.qcut(df[spec.source_column], q=resolved_bins, labels=False, duplicates="drop")
+            realized_bins = int(quantile_bands.dropna().nunique())
+            if realized_bins < 3:
+                return (
+                    None,
+                    (
+                        f"Quantile banding for '{spec.source_column}' produced only {realized_bins} realized bin(s); "
+                        "need at least 3 to keep the engineered feature."
+                    ),
+                )
+            return (quantile_bands.astype(str), None)
+
+        if spec.strategy == "equal_width":
+            resolved_bins = _resolved_band_bins(spec)
+            return (
+                pd.cut(df[spec.source_column], bins=resolved_bins, labels=False, duplicates="drop").astype(str),
+                None,
+            )
+
+        if spec.strategy == "custom":
+            banded = pd.cut(
+                df[spec.source_column],
+                bins=spec.custom_bins,
+                include_lowest=True,
+                duplicates="drop",
+            )
+            return (banded.astype(str), None)
+    except Exception as exc:
+        return (None, f"Banding failed: {str(exc)}")
+
+    return (None, f"Unknown strategy: {spec.strategy}. Use quantiles, equal_width, or custom.")
+
+
+def create_categorical_bands_batch(
+    band_specs: Sequence[CategoricalBandSpec],
+    source_path: str = "data/input/synthetic_inforce.csv",
+    output_path: str = CANONICAL_ANALYSIS_OUTPUT_PATH,
+    sheet_name: Optional[str] = None,
+) -> str:
+    """Apply one or more banding operations with a single load/validate/write cycle."""
     src = resolve_prepared_analysis_path(source_path)
     if not src.exists():
         return json.dumps({"error": f"Source file not found: {source_path}"}, indent=2)
 
-    # STEP 1: Session-aware load (append to current session output when present).
     output_path = ANALYSIS_OUTPUT_PATH
     df = _load_feature_engineering_frame(
         source_path=source_path,
@@ -290,70 +422,41 @@ def create_categorical_bands(
         sheet_name=sheet_name,
     )
 
-    if source_column not in df.columns:
-        return json.dumps(
-            {"error": f"Column '{source_column}' not found in dataset."},
-            indent=2,
+    validation_error = _validate_categorical_band_specs(df, band_specs)
+    if validation_error:
+        return json.dumps({"error": validation_error}, indent=2)
+
+    engineered_df = df.copy()
+    operations: list[dict[str, object]] = []
+
+    for spec in band_specs:
+        banded_series, build_error = _build_categorical_band_series(engineered_df, spec)
+        if build_error:
+            return json.dumps({"error": build_error}, indent=2)
+
+        new_column = f"{spec.source_column}_band"
+        engineered_df[new_column] = banded_series
+        operations.append(
+            {
+                "source_column": spec.source_column,
+                "new_column": new_column,
+                "strategy": spec.strategy,
+                "bins": _resolved_band_bins(spec),
+            }
         )
 
-    if not pd.api.types.is_numeric_dtype(df[source_column]):
-        return json.dumps(
-            {"error": f"Column '{source_column}' must be numeric for banding."},
-            indent=2,
-        )
-
-    new_col = f"{source_column}_band"
-
-    try:
-        if strategy == "quantiles":
-            n = bins if bins is not None else 4
-            quantile_bands = pd.qcut(df[source_column], q=n, labels=False, duplicates="drop")
-            realized_bins = int(quantile_bands.dropna().nunique())
-            if realized_bins < 3:
-                return json.dumps(
-                    {
-                        "error": (
-                            f"Quantile banding for '{source_column}' produced only {realized_bins} realized bin(s); "
-                            "need at least 3 to keep the engineered feature."
-                        )
-                    },
-                    indent=2,
-                )
-            df[new_col] = quantile_bands
-            df[new_col] = df[new_col].astype(str)  # JSON-friendly categorical
-        elif strategy == "equal_width":
-            n = bins if bins is not None else 5
-            df[new_col] = pd.cut(df[source_column], bins=n, labels=False, duplicates="drop")
-            df[new_col] = df[new_col].astype(str)
-        elif strategy == "custom":
-            if custom_bins is None:
-                return json.dumps(
-                    {"error": "custom strategy requires custom_bins list."},
-                    indent=2,
-                )
-            df[new_col] = pd.cut(df[source_column], bins=custom_bins, include_lowest=True, duplicates="drop")
-            # Keep as interval strings like "(0, 25]"
-            df[new_col] = df[new_col].astype(str)
-        else:
-            return json.dumps(
-                {"error": f"Unknown strategy: {strategy}. Use quantiles, equal_width, or custom."},
-                indent=2,
-            )
-    except Exception as e:
-        return json.dumps({"error": f"Banding failed: {str(e)}"}, indent=2)
-
-    # STEP 3: Save and replace output file with appended feature columns.
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(output_path, engine="pyarrow", index=False)
+    engineered_df.to_parquet(output_path, engine="pyarrow", index=False)
 
-    result = {
-        "success": True,
-        "new_column": new_col,
-        "output_path": output_path,
-        "strategy": strategy,
-    }
-    return json.dumps(result, indent=2)
+    return json.dumps(
+        {
+            "success": True,
+            "output_path": output_path,
+            "operations": operations,
+        },
+        indent=2,
+    )
 
 
 def regroup_categorical_features(
