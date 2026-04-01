@@ -121,9 +121,10 @@ def test_steward_agent_profile_request_for_prepared_dataset_lists_engineered_col
     agent = DataStewardAgent()
     response = agent.run("profile data/output/analysis_inforce.parquet")
 
-    assert "Columns, data types, and null counts for `data/output/analysis_inforce.parquet`:" in response
+    assert "Columns, data types, feature classes, and null counts for `data/output/analysis_inforce.parquet`:" in response
     assert "Issue_Age_band" in response
     assert "Face_Amount_band" in response
+    assert "class:" in response
 
 
 def test_steward_agent_raw_schema_request_defaults_to_synthetic_input(monkeypatch):
@@ -135,6 +136,12 @@ def test_steward_agent_raw_schema_request_defaults_to_synthetic_input(monkeypatc
             {
                 "columns": ["MAC", "MEC", "MAF", "MEF"],
                 "data_types": {"MAC": "float64", "MEC": "float64", "MAF": "float64", "MEF": "float64"},
+                "feature_classification": {
+                    "MAC": "numerical",
+                    "MEC": "numerical",
+                    "MAF": "numerical",
+                    "MEF": "numerical",
+                },
                 "null_counts": {"MAC": 0, "MEC": 0, "MAF": 0, "MEF": 0},
             }
         )
@@ -146,8 +153,8 @@ def test_steward_agent_raw_schema_request_defaults_to_synthetic_input(monkeypatc
 
     assert captured["data_path"] == "data/input/synthetic_inforce.csv"
     assert "Requested columns for `data/input/synthetic_inforce.csv`:" in response
-    assert "- `MAC`: `float64`; nulls: `0`" in response
-    assert "- `MEF`: `float64`; nulls: `0`" in response
+    assert "- `MAC`: `float64`; class: `numerical`; nulls: `0`" in response
+    assert "- `MEF`: `float64`; class: `numerical`; nulls: `0`" in response
     assert "Gender" not in response
 
 

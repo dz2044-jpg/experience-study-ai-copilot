@@ -106,8 +106,8 @@ def profile_dataset(
     """
     Profile the dataset and return descriptive statistics as a JSON string.
 
-    Returns total rows, columns, data types, memory usage, unique policy count,
-    and null counts per column.
+    Returns total rows, columns, data types, feature classifications,
+    memory usage, unique policy count, and null counts per column.
     """
     path = Path(data_path)
     if not path.exists():
@@ -125,11 +125,13 @@ def profile_dataset(
         unique_policies = int(df["Policy_Number"].nunique())
 
     data_types = {col: str(dtype) for col, dtype in df.dtypes.items()}
+    feature_classification = {col: _classify_feature_type(df, col) for col in df.columns}
 
     result = {
         "total_rows": len(df),
         "columns": list(df.columns),
         "data_types": data_types,
+        "feature_classification": feature_classification,
         "memory_usage_bytes": memory_bytes,
         "memory_usage_human": f"{memory_bytes / 1024:.2f} KB",
         "unique_policy_count": unique_policies,

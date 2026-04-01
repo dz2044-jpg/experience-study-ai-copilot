@@ -151,6 +151,8 @@ def test_profile_dataset_supports_parquet_input(tmp_path):
 
     assert result["total_rows"] == len(source_df)
     assert result["data_types"]["MAC"] == "float64"
+    assert result["feature_classification"]["Gender"] == "categorical"
+    assert result["feature_classification"]["Face_Amount"] == "numerical"
 
 
 def test_create_categorical_bands_supports_xlsx_sheet_input(tmp_path, monkeypatch):

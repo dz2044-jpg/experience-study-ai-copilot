@@ -298,6 +298,7 @@ class DataStewardAgent:
 
         columns = payload.get("columns", [])
         data_types = payload.get("data_types", {})
+        feature_classification = payload.get("feature_classification", {})
         null_counts = payload.get("null_counts", {})
         requested_columns = DataStewardAgent._extract_requested_schema_columns(user_message, columns)
         columns_to_show = requested_columns or columns
@@ -306,11 +307,13 @@ class DataStewardAgent:
         if requested_columns:
             lines.append(f"Requested columns for `{data_path}`:")
         else:
-            lines.append(f"Columns, data types, and null counts for `{data_path}`:")
+            lines.append(f"Columns, data types, feature classes, and null counts for `{data_path}`:")
         lines.append("")
         for column in columns_to_show:
             lines.append(
-                f"- `{column}`: `{data_types.get(column, 'unknown')}`; nulls: `{null_counts.get(column, 'unknown')}`"
+                f"- `{column}`: `{data_types.get(column, 'unknown')}`; "
+                f"class: `{feature_classification.get(column, 'unknown')}`; "
+                f"nulls: `{null_counts.get(column, 'unknown')}`"
             )
         return "\n".join(lines)
 
