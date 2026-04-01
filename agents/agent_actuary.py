@@ -21,9 +21,15 @@ from agents.schemas import DimensionalSweepSchema
 from tools.data_io import (
     CANONICAL_ANALYSIS_OUTPUT_PATH,
     get_tabular_columns,
+    get_tabular_column_types,
     resolve_prepared_analysis_path,
 )
-from tools.insight_engine import run_dimensional_sweep
+from tools.insight_engine import (
+    BOOLEAN_TYPES,
+    EXCLUDED_DIMENSIONS,
+    STRING_LIKE_TYPES,
+    run_dimensional_sweep,
+)
 
 
 SYSTEM_PROMPT = """
@@ -69,6 +75,17 @@ class ActuaryAgent:
     """Agent wrapper that routes actuarial questions to dimensional sweep tooling."""
 
     DEFAULT_ANALYSIS_PATH = CANONICAL_ANALYSIS_OUTPUT_PATH
+    ALL_ELIGIBLE_DIMENSION_ALIASES = {
+        "all_dimensions",
+        "all_eligible_dimensions",
+    }
+    ALL_CATEGORICAL_DIMENSION_ALIASES = {
+        "all_the_objective_columns",
+        "all_objective_columns",
+        "all_the_categorical_columns",
+        "all_categorical_columns",
+        "categorical_columns",
+    }
     FILTER_INTRO_PATTERNS = (
         r"\bwhere\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+but\b|,?\s+to\b|[?.]|$)",
         r"\bonly\s+for\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|,?\s+but\b|,?\s+to\b|[?.]|$)",
@@ -194,6 +211,42 @@ class ActuaryAgent:
         cleaned_token = re.sub(r"^(?:the\s+column\s+|column\s+)", "", token.strip(), flags=re.IGNORECASE)
         column_lookup = {cls._normalize_column_name(column): column for column in available_columns}
         return column_lookup.get(cls._normalize_column_name(cleaned_token))
+
+    @classmethod
+    def _is_all_eligible_dimensions_alias(cls, token: str) -> bool:
+        """Return True when a token means sweep all eligible dimensions."""
+        return cls._normalize_column_name(token) in cls.ALL_ELIGIBLE_DIMENSION_ALIASES
+
+    @classmethod
+    def _is_all_categorical_dimensions_alias(cls, token: str) -> bool:
+        """Return True when a token means sweep all categorical columns."""
+        return cls._normalize_column_name(token) in cls.ALL_CATEGORICAL_DIMENSION_ALIASES
+
+    @staticmethod
+    def _is_categorical_type_name(type_name: str) -> bool:
+        """Return True when a schema type name represents a categorical dimension."""
+        normalized = type_name.strip().lower()
+        upper = type_name.strip().upper()
+        return (
+            normalized in {"object", "string", "str", "category", "bool", "boolean"}
+            or upper in STRING_LIKE_TYPES
+            or upper in BOOLEAN_TYPES
+        )
+
+    @classmethod
+    def _load_categorical_dimension_columns(cls, data_path: str) -> tuple[Optional[list[str]], str]:
+        """Read categorical-only dimension columns from the prepared analysis dataset."""
+        resolved_path = resolve_prepared_analysis_path(data_path)
+        if not resolved_path.exists():
+            return (None, str(resolved_path))
+
+        column_types = get_tabular_column_types(str(resolved_path))
+        categorical_columns = [
+            column
+            for column, type_name in column_types.items()
+            if column not in EXCLUDED_DIMENSIONS and cls._is_categorical_type_name(type_name)
+        ]
+        return (categorical_columns, str(resolved_path))
 
     def _build_ranked_cohort_table(self, rows: list[dict[str, Any]]) -> str:
         """Render the top-ranked cohorts as a markdown table."""
@@ -340,7 +393,7 @@ class ActuaryAgent:
         cls,
         user_message: str,
         available_columns: list[str],
-    ) -> tuple[Optional[list[str]], list[str]]:
+    ) -> tuple[Optional[list[str]], list[str], Optional[str]]:
         """Parse explicit requested dimensions from phrases like 'on X, Y' or 'between A, B, and C'."""
         patterns = [
             rf"\bbetween\s+(.+?)(?:{cls.COLUMN_SEGMENT_STOP_PATTERN})",
@@ -356,7 +409,7 @@ class ActuaryAgent:
                 break
 
         if not requested_segment:
-            return (None, [])
+            return (None, [], None)
 
         cleaned_segment = requested_segment.replace("×", ",").replace(" x ", ", ")
         cleaned_segment = re.sub(r"\bfor all pairs\b", "", cleaned_segment, flags=re.IGNORECASE)
@@ -369,7 +422,15 @@ class ActuaryAgent:
 
         matched: list[str] = []
         missing: list[str] = []
+        saw_all_categorical_alias = False
+        saw_all_eligible_alias = False
         for token in tokens:
+            if cls._is_all_categorical_dimensions_alias(token):
+                saw_all_categorical_alias = True
+                continue
+            if cls._is_all_eligible_dimensions_alias(token):
+                saw_all_eligible_alias = True
+                continue
             resolved = cls._resolve_column_token(token, available_columns)
             if resolved:
                 if resolved not in matched:
@@ -377,7 +438,16 @@ class ActuaryAgent:
             else:
                 missing.append(token)
 
-        return (matched or None, missing)
+        if matched:
+            return (matched, missing, None)
+
+        if saw_all_categorical_alias and not missing:
+            return (None, [], "all_categorical")
+
+        if saw_all_eligible_alias and not missing:
+            return (None, [], "all_eligible")
+
+        return (matched or None, missing, None)
 
     @classmethod
     def _parse_scalar_value(cls, raw_value: str) -> str | int | float:
@@ -542,13 +612,24 @@ class ActuaryAgent:
                 "Run Data Steward first to prepare the analysis dataset, then rerun the sweep."
             )
 
-        selected_columns, missing_columns = self._extract_requested_columns(user_message, available_columns)
+        selected_columns, missing_columns, selected_scope = self._extract_requested_columns(
+            user_message,
+            available_columns,
+        )
         if missing_columns:
             missing_list = ", ".join(f"`{column}`" for column in missing_columns)
             return (
                 f"Unable to complete sweep: requested column(s) not found in `{resolved_path}`: {missing_list}. "
                 "Run Data Steward first to create those features, then rerun the sweep."
             )
+
+        if selected_scope == "all_categorical":
+            selected_columns, _ = self._load_categorical_dimension_columns(self.DEFAULT_ANALYSIS_PATH)
+            if not selected_columns:
+                return (
+                    f"Unable to complete sweep: `{resolved_path}` does not contain any categorical dimension columns. "
+                    "Run Data Steward first to prepare categorical features, then rerun the sweep."
+                )
 
         filters, saw_filter_language, ambiguous_filters = self._extract_structured_filters(
             user_message,
@@ -578,7 +659,12 @@ class ActuaryAgent:
             data_path=self.DEFAULT_ANALYSIS_PATH,
         )
 
-        selected_label = ", ".join(selected_columns) if selected_columns else "auto-detected dimensions"
+        if selected_scope == "all_categorical":
+            selected_label = "all categorical columns"
+        elif selected_scope == "all_eligible":
+            selected_label = "all eligible dimensions"
+        else:
+            selected_label = ", ".join(selected_columns) if selected_columns else "all eligible dimensions"
         filter_label = ""
         if filters:
             filter_label = " with filters " + ", ".join(
