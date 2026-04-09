@@ -1,5 +1,5 @@
 ---
-name: "experience_study_skill"
+name: "experience-stud-skill"
 description: "A deterministic end-to-end experience-study copilot for actuarial workflows."
 version: "1.0.0"
 ---
