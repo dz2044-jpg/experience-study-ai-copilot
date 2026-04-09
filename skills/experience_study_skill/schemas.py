@@ -20,6 +20,22 @@ class ProfileDatasetInput(BaseModel):
     )
 
 
+class InspectDatasetSchemaInput(BaseModel):
+    """Inspect the ordered columns and data types for a supported tabular dataset."""
+
+    data_path: str | None = Field(
+        default=None,
+        description=(
+            "Optional source path. When omitted, the current session's prepared dataset "
+            "is inspected first, then the raw input dataset."
+        ),
+    )
+    sheet_name: str | None = Field(
+        default=None,
+        description="Optional worksheet name when data_path points to an XLSX workbook.",
+    )
+
+
 class ActuarialDataChecksInput(BaseModel):
     """Run actuarial validation checks against a dataset."""
 
@@ -176,6 +192,10 @@ _TOOL_MODELS: dict[str, tuple[str, type[BaseModel]]] = {
     "profile_dataset": (
         "Profile a supported source dataset and create the session-local prepared dataset.",
         ProfileDatasetInput,
+    ),
+    "inspect_dataset_schema": (
+        "Inspect the ordered columns and data types for a supported tabular dataset.",
+        InspectDatasetSchemaInput,
     ),
     "run_actuarial_data_checks": (
         "Run deterministic actuarial validation checks on a dataset.",

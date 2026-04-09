@@ -27,7 +27,7 @@ def test_extract_top_n_caps_large_requests(tmp_path: Path):
     assert copilot._extract_top_n("Run a sweep and show the top 500 cohorts.") == 20
 
 
-def test_profile_only_request_creates_session_local_prepared_dataset(
+def test_profile_and_columns_request_profiles_then_inspects_prepared_dataset(
     tmp_path: Path,
     sample_csv_path: Path,
 ):
@@ -35,10 +35,55 @@ def test_profile_only_request_creates_session_local_prepared_dataset(
 
     events = list(copilot.process_message(f"Profile {sample_csv_path} and tell me the columns."))
 
-    assert "prepared dataset" in final_message(events)
+    tool_starts = [event.message for event in events if event.type == "tool_start"]
+    message = final_message(events)
+
+    assert tool_starts == [
+        "Executing `profile_dataset`.",
+        "Executing `inspect_dataset_schema`.",
+    ]
+    assert "Profiled the source dataset and saved" in message
+    assert "Columns in" in message
+    assert message.index("`Policy_Number`") < message.index("`Duration`") < message.index("`MAC`")
     assert copilot.state.prepared_dataset_ready is True
     assert copilot.state.prepared_dataset_path is not None
     assert copilot.state.prepared_dataset_path.exists()
+
+
+def test_schema_request_for_bare_filename_uses_session_artifact_without_reprofiling(
+    tmp_path: Path,
+    sample_csv_path: Path,
+):
+    copilot = UnifiedCopilot(session_id="session-a", output_base_dir=tmp_path / "sessions")
+    list(copilot.process_message(f"Profile {sample_csv_path}"))
+
+    events = list(copilot.process_message("What are columns in analysis_inforce.parquet?"))
+
+    tool_starts = [event.message for event in events if event.type == "tool_start"]
+    message = final_message(events)
+
+    assert tool_starts == ["Executing `inspect_dataset_schema`."]
+    assert copilot.state.prepared_dataset_path is not None
+    assert f"Columns in `{copilot.state.prepared_dataset_path.resolve()}`" in message
+    assert "`Policy_Number`" in message
+    assert "`Risk_Class`" in message
+
+
+def test_pure_schema_request_does_not_mutate_prepared_artifact_state(
+    tmp_path: Path,
+    sample_csv_path: Path,
+):
+    copilot = UnifiedCopilot(session_id="session-a", output_base_dir=tmp_path / "sessions")
+    list(copilot.process_message(f"Profile {sample_csv_path}"))
+
+    prepared_path = copilot.state.prepared_dataset_path
+    events = list(copilot.process_message("Show me the schema for the current dataset."))
+
+    assert prepared_path is not None
+    assert copilot.state.prepared_dataset_path == prepared_path
+    assert copilot.state.prepared_dataset_ready is True
+    assert not any(event.type == "artifact_update" for event in events)
+    assert "Columns in" in final_message(events)
 
 
 def test_analysis_only_request_runs_after_profile(

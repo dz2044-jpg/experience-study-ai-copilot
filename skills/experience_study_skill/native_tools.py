@@ -227,6 +227,27 @@ def _choose_dataset_path(
     return None
 
 
+def _resolve_schema_source_path(
+    explicit_path: str | None,
+    context: ToolExecutionContext,
+) -> Path | None:
+    if explicit_path:
+        requested_path = Path(explicit_path)
+        candidates = [requested_path]
+        if not requested_path.is_absolute():
+            candidates.append(context.output_dir / requested_path)
+            candidates.append(Path.cwd() / requested_path)
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate.resolve()
+        return None
+    if context.prepared_dataset_path and context.prepared_dataset_path.exists():
+        return context.prepared_dataset_path.resolve()
+    if context.raw_input_path and context.raw_input_path.exists():
+        return context.raw_input_path.resolve()
+    return None
+
+
 def _find_raw_non_numeric_values(data_path: str, sheet_name: str | None = None) -> list[str]:
     raw_df = load_tabular_input_as_strings(data_path, sheet_name=sheet_name)
     issues: list[str] = []
@@ -288,6 +309,38 @@ def profile_dataset(
             "prepared_dataset_path": str(prepared_path),
         },
         data=data,
+    )
+
+
+def inspect_dataset_schema(
+    *,
+    context: ToolExecutionContext,
+    data_path: str | None = None,
+    sheet_name: str | None = None,
+) -> dict[str, Any]:
+    source_path = _resolve_schema_source_path(data_path, context)
+    if source_path is None:
+        if data_path:
+            return _error_result("validation_error", f"File not found: {data_path}")
+        return _error_result(
+            "missing_prerequisite",
+            "No dataset is available. Profile a dataset first or provide a data_path.",
+        )
+
+    context.emit_status("Inspecting the dataset schema.")
+    columns = get_tabular_columns(str(source_path), sheet_name=sheet_name)
+    column_types = get_tabular_column_types(str(source_path), sheet_name=sheet_name)
+    ordered_types = {column: column_types.get(column, "unknown") for column in columns}
+    return _tool_result(
+        True,
+        "schema",
+        f"Inspected the schema for `{source_path}`.",
+        data={
+            "source_path": str(source_path),
+            "columns": columns,
+            "column_count": len(columns),
+            "data_types": ordered_types,
+        },
     )
 
 
@@ -1132,6 +1185,9 @@ def get_tool_handlers() -> dict[str, Callable[[dict[str, Any], ToolExecutionCont
     """Return the registry of deterministic tool handlers."""
     return {
         "profile_dataset": lambda args, context: profile_dataset(context=context, **args),
+        "inspect_dataset_schema": lambda args, context: inspect_dataset_schema(
+            context=context, **args
+        ),
         "run_actuarial_data_checks": lambda args, context: run_actuarial_data_checks(
             context=context, **args
         ),

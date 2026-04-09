@@ -110,7 +110,9 @@ def _consume_copilot_events(
         elif event.type == "tool_start":
             status_panel.write(event.message)
         elif event.type == "tool_result":
-            status_panel.write(event.message)
+            result = event.data.get("result", {})
+            if not result.get("ok", False):
+                status_panel.write(event.message)
         elif event.type == "artifact_update":
             latest_visualization_path = event.data.get("latest_visualization_path") or latest_visualization_path
         elif event.type == "text_delta":

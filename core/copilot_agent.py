@@ -149,6 +149,7 @@ class IntentSummary:
 
     explicit_data_path: str | None
     wants_profile: bool
+    wants_schema: bool
     wants_validate: bool
     wants_band: bool
     wants_regroup: bool
@@ -161,6 +162,7 @@ class IntentSummary:
         return not any(
             (
                 self.wants_profile,
+                self.wants_schema,
                 self.wants_validate,
                 self.wants_band,
                 self.wants_regroup,
@@ -175,7 +177,7 @@ class UnifiedCopilot:
     """Single-agent copilot backed by a self-contained skill package."""
 
     _MAX_SWEEP_TOP_N = 20
-    _PATH_RE = re.compile(r"((?:/|[A-Za-z]:[\\/]|data/)[\w./\\-]+\.(?:csv|parquet|xlsx))")
+    _PATH_RE = re.compile(r"((?:/|[A-Za-z]:[\\/])?[\w./\\-]+\.(?:csv|parquet|xlsx))")
     _FILTER_PATTERNS = (
         r"\bwhere\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|[?.]|$)",
         r"\bonly\s+for\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|[?.]|$)",
@@ -264,8 +266,9 @@ class UnifiedCopilot:
 
     def _summarize_intent(self, user_input: str) -> IntentSummary:
         lowered = self._PATH_RE.sub(" ", user_input).lower()
-        wants_profile = any(
-            token in lowered for token in ("profile", "columns", "schema", "data types")
+        wants_profile = "profile" in lowered
+        wants_schema = any(
+            token in lowered for token in ("columns", "schema", "data types", "dtype", "dtypes")
         )
         wants_validate = any(
             token in lowered for token in ("validate", "check the data", "check data", "missing values", "errors")
@@ -296,6 +299,7 @@ class UnifiedCopilot:
         return IntentSummary(
             explicit_data_path=self._extract_data_path(user_input),
             wants_profile=wants_profile,
+            wants_schema=wants_schema,
             wants_validate=wants_validate,
             wants_band=wants_band,
             wants_regroup=wants_regroup,
@@ -314,6 +318,16 @@ class UnifiedCopilot:
         state.refresh()
         has_prepared = state.prepared_dataset_ready or state.prepared_dataset_path is not None
         has_sweep = state.latest_sweep_ready or state.latest_sweep_path is not None
+        has_dataset = (
+            intent.explicit_data_path
+            or state.prepared_dataset_ready
+            or state.prepared_dataset_path is not None
+            or state.raw_input_path is not None
+        )
+        if intent.wants_schema and not has_dataset and not (
+            intent.wants_profile or intent.wants_full_pipeline
+        ):
+            return "No dataset is available. Profile a dataset first or provide a data_path."
         if intent.wants_visualize and not (
             has_sweep or intent.wants_analysis or intent.wants_full_pipeline
         ):
@@ -351,6 +365,14 @@ class UnifiedCopilot:
         if intent.wants_profile or intent.wants_full_pipeline:
             if intent.explicit_data_path or state.raw_input_path:
                 enabled.add("profile_dataset")
+        if intent.wants_schema:
+            if (
+                intent.explicit_data_path
+                or state.prepared_dataset_ready
+                or state.prepared_dataset_path
+                or state.raw_input_path
+            ):
+                enabled.add("inspect_dataset_schema")
         if intent.wants_validate:
             if intent.explicit_data_path or state.raw_input_path or state.prepared_dataset_ready:
                 enabled.add("run_actuarial_data_checks")
@@ -592,6 +614,11 @@ class UnifiedCopilot:
         )
         return {"metric": self._extract_metric(user_input), "data_path": data_path}
 
+    def _extract_schema_args(self, intent: IntentSummary) -> dict[str, Any]:
+        if intent.wants_profile or intent.wants_full_pipeline:
+            return {"data_path": None}
+        return {"data_path": intent.explicit_data_path}
+
     def _build_fallback_plan(
         self,
         user_input: str,
@@ -608,6 +635,9 @@ class UnifiedCopilot:
 
         if (intent.wants_profile or intent.wants_full_pipeline) and profile_path:
             plan.append(("profile_dataset", {"data_path": profile_path}))
+
+        if intent.wants_schema:
+            plan.append(("inspect_dataset_schema", self._extract_schema_args(intent)))
 
         if intent.wants_validate:
             plan.append(("run_actuarial_data_checks", {"data_path": intent.explicit_data_path}))
@@ -636,19 +666,95 @@ class UnifiedCopilot:
         if not plan:
             return (
                 [],
-                "I can profile a dataset, validate it, engineer features, run dimensional sweeps, or generate the combined report.",
+                "I can inspect dataset schemas, profile a dataset, validate it, engineer features, run dimensional sweeps, or generate the combined report.",
             )
         return (plan, None)
 
-    def _summarize_tool_results(self, results: list[dict[str, Any]]) -> str:
-        if not results:
-            return "No deterministic work was executed."
-        lines = [result["message"] for result in results]
+    def _format_schema_result(self, result: dict[str, Any]) -> str:
+        data = result.get("data", {})
+        source_path = data.get("source_path", "the dataset")
+        columns = data.get("columns", [])
+        data_types = data.get("data_types", {})
+        if not columns:
+            return result["message"]
+        lines = [f"Columns in `{source_path}` ({len(columns)}):"]
+        lines.extend(
+            f"- `{column}`: `{data_types.get(column, 'unknown')}`" for column in columns
+        )
+        return "\n".join(lines)
+
+    def _format_profile_result(self, result: dict[str, Any]) -> str:
+        data = result.get("data", {})
+        artifacts = result.get("artifacts", {})
+        source_path = artifacts.get("raw_input_path", "the source dataset")
+        prepared_path = artifacts.get("prepared_dataset_path", "the prepared dataset")
+        row_count = data.get("total_rows")
+        column_count = len(data.get("columns", []))
+        unique_policies = data.get("unique_policy_count")
+        summary_bits = []
+        if row_count is not None:
+            summary_bits.append(f"{int(row_count):,} rows")
+        if column_count:
+            summary_bits.append(f"{column_count} columns")
+        if unique_policies is not None:
+            summary_bits.append(f"{int(unique_policies):,} unique policies")
+        lines = [f"Created the prepared dataset `{prepared_path}` from `{source_path}`."]
+        if summary_bits:
+            lines.append(f"Profile summary: {', '.join(summary_bits)}.")
+        return "\n".join(lines)
+
+    def _format_compact_result(self, result: dict[str, Any]) -> str:
+        kind = result.get("kind")
+        data = result.get("data", {})
+        artifacts = result.get("artifacts", {})
+        if kind == "profile":
+            prepared_path = artifacts.get("prepared_dataset_path", "the prepared dataset")
+            return f"Profiled the source dataset and saved `{prepared_path}`."
+        if kind == "schema":
+            source_path = data.get("source_path", "the dataset")
+            column_count = data.get("column_count")
+            if column_count is None:
+                return f"Inspected the schema for `{source_path}`."
+            return f"Inspected the schema for `{source_path}` ({int(column_count)} columns)."
+        if kind == "validation":
+            return result["message"]
+        if kind == "feature_engineering":
+            return result["message"]
+        if kind == "analysis":
+            return result["message"]
+        if kind == "visualization":
+            return result["message"]
+        return result["message"]
+
+    def _next_steps(self) -> list[str]:
         next_steps: list[str] = []
         if self.state.prepared_dataset_ready and not self.state.latest_sweep_ready:
             next_steps.append("Run a dimensional sweep when you are ready for A/E analysis.")
         if self.state.latest_sweep_ready and not self.state.latest_visualization_ready:
             next_steps.append("Generate the combined report to visualize the latest sweep.")
+        return next_steps
+
+    def _summarize_tool_results(self, results: list[dict[str, Any]]) -> str:
+        if not results:
+            return "No deterministic work was executed."
+
+        if len(results) == 1:
+            result = results[0]
+            if result.get("kind") == "schema":
+                lines = [self._format_schema_result(result)]
+            elif result.get("kind") == "profile":
+                lines = [self._format_profile_result(result)]
+            else:
+                lines = [self._format_compact_result(result)]
+        else:
+            lines = ["Completed deterministic steps:"]
+            lines.extend(f"- {self._format_compact_result(result)}" for result in results)
+            schema_results = [result for result in results if result.get("kind") == "schema"]
+            if schema_results:
+                lines.append("")
+                lines.append(self._format_schema_result(schema_results[-1]))
+
+        next_steps = self._next_steps()
         if next_steps:
             lines.append("")
             lines.extend(next_steps)
@@ -711,8 +817,8 @@ class UnifiedCopilot:
 
         if intent.is_general:
             text = (
-                "I can profile a dataset, validate it, engineer features, run dimensional sweeps, "
-                "or generate the combined report."
+                "I can inspect dataset schemas, profile a dataset, validate it, engineer features, "
+                "run dimensional sweeps, or generate the combined report."
             )
             yield from self._finalize_response(user_input, text)
             return
