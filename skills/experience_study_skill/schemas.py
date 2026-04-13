@@ -12,7 +12,11 @@ class ProfileDatasetInput(BaseModel):
 
     data_path: str = Field(
         ...,
-        description="Path to a supported source file (.csv, .parquet, or .xlsx).",
+        description=(
+            "Path to a supported source file (.csv, .parquet, or .xlsx). "
+            "DO NOT invent file paths. You MUST use the exact path provided by the user "
+            "or present in the Current Session State."
+        ),
     )
     sheet_name: str | None = Field(
         default=None,
@@ -27,7 +31,9 @@ class InspectDatasetSchemaInput(BaseModel):
         default=None,
         description=(
             "Optional source path. When omitted, the current session's prepared dataset "
-            "is inspected first, then the raw input dataset."
+            "is inspected first, then the raw input dataset. DO NOT invent file paths. "
+            "You MUST use the exact path provided by the user or present in the "
+            "Current Session State."
         ),
     )
     sheet_name: str | None = Field(
@@ -43,7 +49,8 @@ class ActuarialDataChecksInput(BaseModel):
         default=None,
         description=(
             "Optional supported source path. When omitted, the current session's prepared "
-            "dataset is used."
+            "dataset is used. DO NOT invent file paths. You MUST use the exact path "
+            "provided by the user or present in the Current Session State."
         ),
     )
     sheet_name: str | None = Field(
@@ -57,7 +64,11 @@ class CreateCategoricalBandsInput(BaseModel):
 
     source_column: str = Field(
         ...,
-        description="Numeric column to band, such as Issue_Age or Face_Amount.",
+        description=(
+            "Numeric column to band, such as Issue_Age or Face_Amount. DO NOT invent "
+            "column names. You MUST use an exact column name from the profiled or "
+            "inspected dataset schema."
+        ),
     )
     strategy: Literal["quantiles", "equal_width", "custom"] = Field(
         ...,
@@ -76,7 +87,8 @@ class CreateCategoricalBandsInput(BaseModel):
         default=None,
         description=(
             "Optional explicit source path. When omitted, the current session's prepared "
-            "dataset is updated in place."
+            "dataset is updated in place. DO NOT invent file paths. You MUST use the "
+            "exact path provided by the user or present in the Current Session State."
         ),
     )
     sheet_name: str | None = Field(
@@ -90,7 +102,11 @@ class RegroupCategoricalFeaturesInput(BaseModel):
 
     source_column: str = Field(
         ...,
-        description="Categorical column to regroup, such as Risk_Class.",
+        description=(
+            "Categorical column to regroup, such as Risk_Class. DO NOT invent column "
+            "names. You MUST use an exact column name from the profiled or inspected "
+            "dataset schema."
+        ),
     )
     mapping_dict: dict[str, Any] = Field(
         ...,
@@ -100,7 +116,8 @@ class RegroupCategoricalFeaturesInput(BaseModel):
         default=None,
         description=(
             "Optional explicit source path. When omitted, the current session's prepared "
-            "dataset is updated in place."
+            "dataset is updated in place. DO NOT invent file paths. You MUST use the "
+            "exact path provided by the user or present in the Current Session State."
         ),
     )
     sheet_name: str | None = Field(
@@ -112,7 +129,13 @@ class RegroupCategoricalFeaturesInput(BaseModel):
 class FilterClauseInput(BaseModel):
     """Structured scalar filter applied before aggregation."""
 
-    column: str = Field(..., description="Dataset column name to filter on.")
+    column: str = Field(
+        ...,
+        description=(
+            "Dataset column name to filter on. DO NOT invent column names. You MUST use "
+            "an exact column name from the profiled or inspected dataset schema."
+        ),
+    )
     operator: Literal["=", "!=", ">", ">=", "<", "<="] = Field(
         ...,
         description="Scalar comparison operator.",
@@ -153,7 +176,10 @@ class RunDimensionalSweepInput(BaseModel):
         "Sum_MEF",
     ] = Field(
         default="AE_Ratio_Amount",
-        description="Metric used to rank the resulting cohorts.",
+        description=(
+            "Metric used to rank the resulting cohorts. NEVER select a metric that is "
+            "not explicitly listed in this enum."
+        ),
     )
     filters: list[FilterClauseInput] = Field(
         default_factory=list,
@@ -161,13 +187,18 @@ class RunDimensionalSweepInput(BaseModel):
     )
     selected_columns: list[str] | None = Field(
         default=None,
-        description="Optional list of explicit sweep dimension columns.",
+        description=(
+            "Optional list of explicit sweep dimension columns. DO NOT invent column "
+            "names. You MUST only use exact column names retrieved from the data "
+            "profile or dataset schema."
+        ),
     )
     data_path: str | None = Field(
         default=None,
         description=(
             "Optional prepared analysis path. When omitted, the current session's prepared "
-            "dataset is used."
+            "dataset is used. DO NOT invent file paths. You MUST use the exact path "
+            "provided by the user or present in the Current Session State."
         ),
     )
 
@@ -183,7 +214,8 @@ class GenerateVisualizationInput(BaseModel):
         default=None,
         description=(
             "Optional sweep summary CSV path. When omitted, the current session's latest "
-            "sweep artifact is used."
+            "sweep artifact is used. DO NOT invent file paths. You MUST use the exact "
+            "path provided by the user or present in the Current Session State."
         ),
     )
 

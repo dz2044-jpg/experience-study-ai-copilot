@@ -183,6 +183,7 @@ class UnifiedCopilot:
 
     _MAX_SWEEP_TOP_N = 20
     _PATH_RE = re.compile(r"((?:/|[A-Za-z]:[\\/])?[\w./\\-]+\.(?:csv|parquet|xlsx))")
+    _THINKING_BLOCK_RE = re.compile(r"<thinking>.*?</thinking>", re.IGNORECASE | re.DOTALL)
     _FILTER_PATTERNS = (
         r"\bwhere\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|[?.]|$)",
         r"\bonly\s+for\s+(.+?)(?:,?\s+then\b|,?\s+rank\b|,?\s+sort\b|,?\s+using\b|[?.]|$)",
@@ -253,13 +254,31 @@ class UnifiedCopilot:
         for chunk in re.findall(r"\S+\s*", text):
             yield CopilotEvent("text_delta", message=chunk)
 
-    def _finalize_response(self, user_input: str, text: str) -> Iterator[CopilotEvent]:
+    @classmethod
+    def _sanitize_user_facing_text(cls, text: str) -> str:
+        if not text:
+            return ""
+        sanitized = cls._THINKING_BLOCK_RE.sub("", text)
+        sanitized = re.sub(r"[ \t]+\n", "\n", sanitized)
+        sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
+        return sanitized.strip()
+
+    def _finalize_response(
+        self,
+        user_input: str,
+        text: str,
+        *,
+        fallback_text: str = "",
+    ) -> Iterator[CopilotEvent]:
+        final_text = self._sanitize_user_facing_text(text)
+        if not final_text and fallback_text:
+            final_text = self._sanitize_user_facing_text(fallback_text)
         self.history.append({"role": "user", "content": user_input})
-        self.history.append({"role": "assistant", "content": text})
-        yield from self._stream_text(text)
+        self.history.append({"role": "assistant", "content": final_text})
+        yield from self._stream_text(final_text)
         yield CopilotEvent(
             "final",
-            message=text,
+            message=final_text,
             data={"artifact_state": self.state.to_event_payload()},
         )
 
@@ -942,8 +961,13 @@ class UnifiedCopilot:
             message = completion.choices[0].message
             tool_calls = message.tool_calls or []
             if not tool_calls:
-                final_text = message.content or self._summarize_tool_results(tool_results)
-                yield from self._finalize_response(user_input, final_text)
+                fallback_text = self._summarize_tool_results(tool_results)
+                final_text = message.content or fallback_text
+                yield from self._finalize_response(
+                    user_input,
+                    final_text,
+                    fallback_text=fallback_text,
+                )
                 return
 
             working_messages.append(

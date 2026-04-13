@@ -1,9 +1,39 @@
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 
 from core.copilot_agent import UnifiedCopilot
 from tests.conftest import final_message
+
+
+class _FakeToolCall:
+    def __init__(self, *, tool_call_id: str, name: str, arguments: dict[str, object]) -> None:
+        self.id = tool_call_id
+        self.function = SimpleNamespace(name=name, arguments=json.dumps(arguments))
+
+    def model_dump(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "type": "function",
+            "function": {
+                "name": self.function.name,
+                "arguments": self.function.arguments,
+            },
+        }
+
+
+class _FakeClient:
+    def __init__(self, messages: list[SimpleNamespace]) -> None:
+        self._messages = list(messages)
+        self.calls: list[dict[str, object]] = []
+        self.chat = SimpleNamespace(completions=self)
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        message = self._messages.pop(0)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
 def test_tool_gating_hides_visualization_before_sweep(tmp_path: Path):
@@ -179,3 +209,69 @@ def test_failed_tool_call_surfaces_exact_error_without_retrying(
         f"Column `Unknown_Column` was not found in `{copilot.state.prepared_dataset_path}`."
         in message
     )
+
+
+def test_final_llm_response_strips_thinking_from_user_output_and_history(tmp_path: Path):
+    copilot = UnifiedCopilot(session_id="session-a", output_base_dir=tmp_path / "sessions")
+    copilot.client = _FakeClient(
+        [
+            SimpleNamespace(
+                content="<thinking>Check state and prerequisites.</thinking>\nSchema inspection is ready.",
+                tool_calls=[],
+            )
+        ]
+    )
+
+    events = list(copilot.process_message("Show me the schema for /tmp/example.csv."))
+
+    assert final_message(events) == "Schema inspection is ready."
+    assert "<thinking>" not in final_message(events)
+    assert [event.message for event in events if event.type == "text_delta"] == [
+        "Schema ",
+        "inspection ",
+        "is ",
+        "ready.",
+    ]
+    assert copilot.history[-1]["content"] == "Schema inspection is ready."
+
+
+def test_tool_call_keeps_internal_thinking_for_model_but_not_user_output(
+    tmp_path: Path,
+    sample_csv_path: Path,
+):
+    copilot = UnifiedCopilot(session_id="session-a", output_base_dir=tmp_path / "sessions")
+    fake_client = _FakeClient(
+        [
+            SimpleNamespace(
+                content="<thinking>Check state, then inspect exact schema path.</thinking>",
+                tool_calls=[
+                    _FakeToolCall(
+                        tool_call_id="call_1",
+                        name="inspect_dataset_schema",
+                        arguments={"data_path": str(sample_csv_path)},
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                content="<thinking>Summarize the tool output only.</thinking>\nSchema inspection completed.",
+                tool_calls=[],
+            ),
+        ]
+    )
+    copilot.client = fake_client
+
+    events = list(copilot.process_message(f"Show me the schema for {sample_csv_path}."))
+
+    assert [event.message for event in events if event.type == "tool_start"] == [
+        "Executing `inspect_dataset_schema`."
+    ]
+    assert final_message(events) == "Schema inspection completed."
+    assert "<thinking>" not in final_message(events)
+    assert copilot.history[-1]["content"] == "Schema inspection completed."
+    second_call_messages = fake_client.calls[1]["messages"]
+    assistant_messages = [
+        message
+        for message in second_call_messages
+        if message["role"] == "assistant"
+    ]
+    assert any("<thinking>" in message["content"] for message in assistant_messages)
