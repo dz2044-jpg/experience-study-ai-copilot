@@ -45,6 +45,12 @@ class CopilotEvent:
 class UnifiedCopilot:
     """Single-agent copilot backed by a self-contained skill package."""
 
+    _MAX_SWEEP_TOP_N = FallbackPlanner._MAX_SWEEP_TOP_N
+    _PATH_RE = FallbackPlanner._PATH_RE
+    _FILTER_PATTERNS = FallbackPlanner._FILTER_PATTERNS
+    _TEXT_OPERATOR_MAP = FallbackPlanner._TEXT_OPERATOR_MAP
+    _THINKING_BLOCK_RE = ResponseFormatter._THINKING_BLOCK_RE
+
     def __init__(
         self,
         *,

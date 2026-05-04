@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import inspect
+
 from core.copilot_agent import (
     CopilotEvent,
     IntentSummary,
@@ -9,6 +11,10 @@ from core.copilot_agent import (
 from core.fallback_planner import FallbackPlanner
 from core.prerequisite_guard import guard_missing_prerequisites
 from core.response_formatter import ResponseFormatter
+import core.fallback_planner as fallback_planner
+import core.prerequisite_guard as prerequisite_guard
+import core.response_formatter as response_formatter
+import core.session_state as session_state
 
 
 def test_copilot_import_compatibility_remains_valid():
@@ -16,6 +22,16 @@ def test_copilot_import_compatibility_remains_valid():
     assert UnifiedCopilot is not None
     assert SessionArtifactState is not None
     assert IntentSummary is not None
+
+
+def test_extracted_modules_do_not_import_copilot_agent():
+    for module in (
+        fallback_planner,
+        prerequisite_guard,
+        response_formatter,
+        session_state,
+    ):
+        assert "core.copilot_agent" not in inspect.getsource(module)
 
 
 def test_prerequisite_guard_guidance_remains_unchanged(tmp_path: Path):

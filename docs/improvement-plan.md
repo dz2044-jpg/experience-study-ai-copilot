@@ -56,7 +56,7 @@ Important product framing:
 | --- | --- | --- |
 | PR 1 | Governance Docs, Privacy, and README Polish | Completed in current working branch |
 | PR 2 | Golden Workflow Test Hardening | Completed in current working branch |
-| PR 3 | Small Runtime Extraction | Planned |
+| PR 3 | Small Runtime Extraction | Completed in current working branch |
 | PR 4 | Deterministic Tool Module Split | Planned |
 | PR 5 | Methodology Log and Artifact Manifest | Planned |
 | PR 6 | AI Packet, Sanitization, Validation, and Fallback Layer | Planned |
@@ -161,6 +161,8 @@ Acceptance gate:
 - No public tool names changed.
 
 ## Phase 3 - Small Runtime Extraction
+
+Status: Completed in current working branch.
 
 Goal: reduce the size and complexity of `core/copilot_agent.py` without changing behavior.
 
@@ -575,6 +577,6 @@ New workflow handoff capabilities:
 
 ## Immediate Next Move
 
-PR 1 and PR 2 are complete in the current working branch. The next implementation slice is PR 3: Small Runtime Extraction.
+PR 1, PR 2, and PR 3 are complete in the current working branch. The next implementation slice is PR 4: Deterministic Tool Module Split.
 
-Do not start the major deterministic tool split or AI packet work until PR 3 is completed and all tests still pass.
+Do not start methodology logging, AI packet work, or report drafting until PR 4 is completed and all tests still pass.
