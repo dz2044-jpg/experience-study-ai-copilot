@@ -710,7 +710,6 @@ def render_app() -> None:
         "dynamic tool gating."
     )
     _render_empty_state()
-    _render_ai_interpretation_panel(st.session_state["copilot"])
 
     for index, item in enumerate(st.session_state["history"]):
         with st.chat_message("user"):
@@ -726,32 +725,32 @@ def render_app() -> None:
     prompt = st.chat_input(
         "Ask the copilot to profile data, engineer features, run a sweep, or generate the combined report."
     )
-    if not prompt or not prompt.strip():
-        return
+    if prompt and prompt.strip():
+        cleaned_prompt = prompt.strip()
+        with st.chat_message("user"):
+            st.markdown(cleaned_prompt)
+        with st.chat_message("assistant"):
+            status_panel = st.status("Starting copilot...", expanded=True)
+            response_placeholder = st.empty()
+            events = list(st.session_state["copilot"].process_message(cleaned_prompt))
+            response, visualization_path, sweep_results = _consume_copilot_events(
+                events,
+                status_panel=status_panel,
+                response_placeholder=response_placeholder,
+            )
+            _render_sweep_explorer(sweep_results)
+            _render_visualization_card(visualization_path, widget_key_prefix="current")
 
-    cleaned_prompt = prompt.strip()
-    with st.chat_message("user"):
-        st.markdown(cleaned_prompt)
-    with st.chat_message("assistant"):
-        status_panel = st.status("Starting copilot...", expanded=True)
-        response_placeholder = st.empty()
-        events = list(st.session_state["copilot"].process_message(cleaned_prompt))
-        response, visualization_path, sweep_results = _consume_copilot_events(
-            events,
-            status_panel=status_panel,
-            response_placeholder=response_placeholder,
+        st.session_state["history"].append(
+            {
+                "prompt": cleaned_prompt,
+                "response": response,
+                "visualization_path": visualization_path,
+                "sweep_results": sweep_results,
+            }
         )
-        _render_sweep_explorer(sweep_results)
-        _render_visualization_card(visualization_path, widget_key_prefix="current")
 
-    st.session_state["history"].append(
-        {
-            "prompt": cleaned_prompt,
-            "response": response,
-            "visualization_path": visualization_path,
-            "sweep_results": sweep_results,
-        }
-    )
+    _render_ai_interpretation_panel(st.session_state["copilot"])
 
 
 def main() -> None:

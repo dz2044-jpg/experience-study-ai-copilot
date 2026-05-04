@@ -37,6 +37,66 @@ class _FakeResponsePlaceholder:
         self.messages.append(message)
 
 
+class _NullContext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        return False
+
+
+class _FakeStreamlitApp:
+    def __init__(self, *, prompt: str | None, copilot: object) -> None:
+        self.prompt = prompt
+        self.session_state: dict[str, object] = {
+            "session_id": "session-a",
+            "copilot": copilot,
+            "history": [],
+            "ai_interpretation_response": None,
+        }
+
+    def set_page_config(self, **kwargs) -> None:
+        return None
+
+    def title(self, message: str) -> None:
+        return None
+
+    def caption(self, message: str) -> None:
+        return None
+
+    def markdown(self, message: str) -> None:
+        return None
+
+    def chat_input(self, message: str) -> str | None:
+        return self.prompt
+
+    def chat_message(self, role: str) -> _NullContext:
+        return _NullContext()
+
+    def status(self, message: str, *, expanded: bool) -> _FakeStatusPanel:
+        return _FakeStatusPanel()
+
+    def empty(self) -> _FakeResponsePlaceholder:
+        return _FakeResponsePlaceholder()
+
+
+class _FakeRenderCopilot:
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.state = SimpleNamespace(panel_ready=False)
+
+    def process_message(self, user_input: str) -> list[CopilotEvent]:
+        self.calls.append(f"process:{user_input}")
+        self.state.panel_ready = True
+        return [
+            CopilotEvent(
+                "final",
+                message="done",
+                data={"artifact_state": {}},
+            )
+        ]
+
+
 def _write_ai_sweep(path: Path) -> Path:
     pd.DataFrame(
         [
@@ -129,6 +189,59 @@ def _example_packet(
             ),
         ],
     )
+
+
+def test_render_app_renders_ai_panel_after_current_chat_processing(monkeypatch) -> None:
+    calls: list[str] = []
+    copilot = _FakeRenderCopilot(calls)
+    fake_st = _FakeStreamlitApp(prompt=" Run sweep now ", copilot=copilot)
+
+    monkeypatch.setattr(main, "st", fake_st)
+    monkeypatch.setattr(main, "_render_sidebar", lambda: False)
+    monkeypatch.setattr(main, "_render_empty_state", lambda: calls.append("empty_state"))
+    monkeypatch.setattr(main, "_render_sweep_explorer", lambda sweep_results: None)
+    monkeypatch.setattr(
+        main,
+        "_render_visualization_card",
+        lambda visualization_path, widget_key_prefix: None,
+    )
+
+    def fake_render_ai_panel(panel_copilot) -> None:
+        calls.append(f"ai_panel:{panel_copilot.state.panel_ready}")
+
+    monkeypatch.setattr(main, "_render_ai_interpretation_panel", fake_render_ai_panel)
+
+    main.render_app()
+
+    assert calls == ["empty_state", "process:Run sweep now", "ai_panel:True"]
+    assert fake_st.session_state["history"] == [
+        {
+            "prompt": "Run sweep now",
+            "response": "done",
+            "visualization_path": None,
+            "sweep_results": None,
+        }
+    ]
+
+
+def test_render_app_renders_ai_panel_without_prompt(monkeypatch) -> None:
+    calls: list[str] = []
+    copilot = _FakeRenderCopilot(calls)
+    fake_st = _FakeStreamlitApp(prompt=None, copilot=copilot)
+
+    monkeypatch.setattr(main, "st", fake_st)
+    monkeypatch.setattr(main, "_render_sidebar", lambda: False)
+    monkeypatch.setattr(main, "_render_empty_state", lambda: calls.append("empty_state"))
+
+    def fake_render_ai_panel(panel_copilot) -> None:
+        calls.append(f"ai_panel:{panel_copilot.state.panel_ready}")
+
+    monkeypatch.setattr(main, "_render_ai_interpretation_panel", fake_render_ai_panel)
+
+    main.render_app()
+
+    assert calls == ["empty_state", "ai_panel:False"]
+    assert fake_st.session_state["history"] == []
 
 
 def test_consume_copilot_events_keeps_fallback_status_only(monkeypatch) -> None:
