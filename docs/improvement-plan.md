@@ -57,7 +57,7 @@ Important product framing:
 | PR 1 | Governance Docs, Privacy, and README Polish | Completed in current working branch |
 | PR 2 | Golden Workflow Test Hardening | Completed in current working branch |
 | PR 3 | Small Runtime Extraction | Completed in current working branch |
-| PR 4 | Deterministic Tool Module Split | Planned |
+| PR 4 | Deterministic Tool Module Split | Completed in current working branch |
 | PR 5 | Methodology Log and Artifact Manifest | Planned |
 | PR 6 | AI Packet, Sanitization, Validation, and Fallback Layer | Planned |
 | PR 7 | AI Interpretation UI | Planned |
@@ -187,6 +187,8 @@ Acceptance gate:
 - No deterministic output changes.
 
 ## Phase 4 - Deterministic Tool Module Split
+
+Status: Completed in current working branch.
 
 Goal: split `skills/experience_study_skill/native_tools.py` into auditable deterministic modules while preserving behavior.
 
@@ -577,6 +579,6 @@ New workflow handoff capabilities:
 
 ## Immediate Next Move
 
-PR 1, PR 2, and PR 3 are complete in the current working branch. The next implementation slice is PR 4: Deterministic Tool Module Split.
+PR 1, PR 2, PR 3, and PR 4 are complete in the current working branch. The next implementation slice is PR 5: Methodology Log and Artifact Manifest.
 
-Do not start methodology logging, AI packet work, or report drafting until PR 4 is completed and all tests still pass.
+Do not start AI packet work or report drafting until PR 5 is completed and all tests still pass.

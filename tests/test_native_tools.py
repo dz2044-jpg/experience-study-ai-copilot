@@ -1,7 +1,10 @@
+import importlib
+import inspect
 from pathlib import Path
 
 import pandas as pd
 
+import skills.experience_study_skill.native_tools as native_tools
 from skills.experience_study_skill.native_tools import (
     ToolExecutionContext,
     compute_ae_ci,
@@ -9,6 +12,58 @@ from skills.experience_study_skill.native_tools import (
     generate_combined_report,
     run_dimensional_sweep,
 )
+
+
+EXPECTED_PUBLIC_FUNCTIONS = {
+    "profile_dataset",
+    "inspect_dataset_schema",
+    "run_actuarial_data_checks",
+    "create_categorical_bands",
+    "regroup_categorical_features",
+    "run_dimensional_sweep",
+    "generate_combined_report",
+    "get_tool_handlers",
+}
+
+EXPECTED_PUBLIC_TOOL_KEYS = {
+    "profile_dataset",
+    "inspect_dataset_schema",
+    "run_actuarial_data_checks",
+    "create_categorical_bands",
+    "regroup_categorical_features",
+    "run_dimensional_sweep",
+    "generate_combined_report",
+}
+
+FOCUSED_MODULE_NAMES = [
+    "skills.experience_study_skill.io",
+    "skills.experience_study_skill.validation",
+    "skills.experience_study_skill.feature_engineering",
+    "skills.experience_study_skill.ae_math",
+    "skills.experience_study_skill.sweeps",
+    "skills.experience_study_skill.visualization",
+]
+
+
+def test_native_tools_public_api_inventory_remains_available():
+    for function_name in EXPECTED_PUBLIC_FUNCTIONS:
+        assert hasattr(native_tools, function_name)
+        assert callable(getattr(native_tools, function_name))
+
+    handlers = native_tools.get_tool_handlers()
+
+    assert set(handlers) == EXPECTED_PUBLIC_TOOL_KEYS
+    for tool_name, handler in handlers.items():
+        assert callable(handler)
+        assert handler.__globals__[tool_name] is getattr(native_tools, tool_name)
+
+
+def test_focused_deterministic_modules_import_without_native_tools_dependency():
+    for module_name in FOCUSED_MODULE_NAMES:
+        module = importlib.import_module(module_name)
+
+        assert module is not None
+        assert "native_tools" not in inspect.getsource(module)
 
 
 def test_zero_claim_ci_amount_still_returns_upper_bound():
