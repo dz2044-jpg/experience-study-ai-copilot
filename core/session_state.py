@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from core.artifact_manifest import read_artifact_manifest
+from core.methodology_log import read_methodology_log
+
 
 @dataclass(slots=True)
 class SessionArtifactState:
@@ -42,6 +45,17 @@ class SessionArtifactState:
     def default_artifact_manifest_path(self) -> Path:
         return self.audit_dir / "artifact_manifest.json"
 
+    @staticmethod
+    def _audit_files_are_ready(methodology_log_path: Path, artifact_manifest_path: Path) -> bool:
+        if not methodology_log_path.exists() or not artifact_manifest_path.exists():
+            return False
+        try:
+            read_methodology_log(methodology_log_path)
+            read_artifact_manifest(artifact_manifest_path)
+        except (OSError, ValueError):
+            return False
+        return True
+
     def refresh(self) -> None:
         self.prepared_dataset_ready = bool(
             self.prepared_dataset_path and self.prepared_dataset_path.exists()
@@ -61,11 +75,9 @@ class SessionArtifactState:
             self.methodology_log_path = methodology_log_path
         if artifact_manifest_path.exists():
             self.artifact_manifest_path = artifact_manifest_path
-        self.audit_ready = bool(
-            self.methodology_log_path
-            and self.methodology_log_path.exists()
-            and self.artifact_manifest_path
-            and self.artifact_manifest_path.exists()
+        self.audit_ready = self._audit_files_are_ready(
+            methodology_log_path,
+            artifact_manifest_path,
         )
 
     def apply_tool_result(self, result: dict[str, Any]) -> bool:

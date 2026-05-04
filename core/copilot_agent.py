@@ -375,6 +375,13 @@ class UnifiedCopilot:
             for key in ("new_column", "bins", "mapping_applied"):
                 if key in data:
                     parameters[key] = data[key]
+        if tool_name == "run_actuarial_data_checks":
+            data = result.get("data") or {}
+            if not isinstance(data, dict):
+                data = {}
+            issues = data.get("issues", [])
+            parameters["status"] = data.get("status")
+            parameters["issue_count"] = len(issues) if isinstance(issues, list) else 0
         if tool_name == "generate_combined_report":
             parameters.setdefault("metric", "amount")
         return normalize_json_value(parameters)
@@ -541,16 +548,12 @@ class UnifiedCopilot:
                 )
         return entries
 
-    def _state_source_hashes(
-        self,
-        pre_call_sources: dict[str, dict[str, str]],
-    ) -> dict[str, str | None]:
+    def _sweep_state_source_hashes(self) -> dict[str, str | None]:
         source_hashes: dict[str, str | None] = {}
         for name, path in (
             ("raw_input_path", self.state.raw_input_path),
             ("prepared_dataset_path", self.state.prepared_dataset_path),
             ("latest_sweep_path", self.state.latest_sweep_path),
-            ("latest_visualization_path", self.state.latest_visualization_path),
         ):
             try:
                 source_hashes[name] = (
@@ -558,8 +561,6 @@ class UnifiedCopilot:
                 )["content_hash"]
             except OSError:
                 source_hashes[name] = None
-        for name, source in pre_call_sources.items():
-            source_hashes[f"pre_call_{name}"] = source["content_hash"]
         return normalize_json_value(source_hashes)
 
     def _record_audit_result(
@@ -579,6 +580,7 @@ class UnifiedCopilot:
             pre_call_sources,
         )
         append_methodology_event(methodology_log_path, methodology_event)
+        audit_files_written = True
 
         manifest_entries = self._artifact_entries_for_result(
             tool_name,
@@ -588,41 +590,50 @@ class UnifiedCopilot:
         )
         if manifest_entries:
             upsert_artifact_entries(artifact_manifest_path, manifest_entries)
+            audit_files_written = True
 
-        parameters = self._audit_parameters(tool_name, args, result)
-        source_hashes = self._state_source_hashes(pre_call_sources)
-        fingerprint_inputs = build_state_fingerprint_payload(
-            source_hashes=source_hashes,
-            selected_columns=parameters.get("selected_columns"),
-            filters=parameters.get("filters"),
-            depth=parameters.get("depth"),
-            sort_by=parameters.get("sort_by"),
-            min_mac=parameters.get("min_mac"),
-            packet_schema_version="pre_ai_v0",
-            skill_name=self.active_skill.name,
-            skill_version=self.active_skill.version,
-        )
-        fingerprint = build_state_fingerprint(
-            source_hashes=source_hashes,
-            selected_columns=parameters.get("selected_columns"),
-            filters=parameters.get("filters"),
-            depth=parameters.get("depth"),
-            sort_by=parameters.get("sort_by"),
-            min_mac=parameters.get("min_mac"),
-            packet_schema_version="pre_ai_v0",
-            skill_name=self.active_skill.name,
-            skill_version=self.active_skill.version,
-        )
-        update_manifest_fingerprint(
-            artifact_manifest_path,
-            fingerprint=fingerprint,
-            fingerprint_inputs=fingerprint_inputs,
-        )
-        return self.state.apply_audit_result(
-            methodology_log_path=methodology_log_path,
-            artifact_manifest_path=artifact_manifest_path,
-            latest_state_fingerprint=fingerprint,
-        )
+        if tool_name == "run_dimensional_sweep":
+            parameters = self._audit_parameters(tool_name, args, result)
+            source_hashes = self._sweep_state_source_hashes()
+            fingerprint_inputs = build_state_fingerprint_payload(
+                source_hashes=source_hashes,
+                selected_columns=parameters.get("selected_columns"),
+                filters=parameters.get("filters"),
+                depth=parameters.get("depth"),
+                sort_by=parameters.get("sort_by"),
+                min_mac=parameters.get("min_mac"),
+                packet_schema_version="pre_ai_v0",
+                skill_name=self.active_skill.name,
+                skill_version=self.active_skill.version,
+            )
+            fingerprint = build_state_fingerprint(
+                source_hashes=source_hashes,
+                selected_columns=parameters.get("selected_columns"),
+                filters=parameters.get("filters"),
+                depth=parameters.get("depth"),
+                sort_by=parameters.get("sort_by"),
+                min_mac=parameters.get("min_mac"),
+                packet_schema_version="pre_ai_v0",
+                skill_name=self.active_skill.name,
+                skill_version=self.active_skill.version,
+            )
+            update_manifest_fingerprint(
+                artifact_manifest_path,
+                fingerprint=fingerprint,
+                fingerprint_inputs=fingerprint_inputs,
+            )
+            audit_files_written = True
+            state_changed = self.state.apply_audit_result(
+                methodology_log_path=methodology_log_path,
+                artifact_manifest_path=artifact_manifest_path,
+                latest_state_fingerprint=fingerprint,
+            )
+        else:
+            state_changed = self.state.apply_audit_result(
+                methodology_log_path=methodology_log_path,
+                artifact_manifest_path=artifact_manifest_path,
+            )
+        return audit_files_written or state_changed
 
     def _execute_tool_call(
         self,
@@ -650,6 +661,7 @@ class UnifiedCopilot:
                     result,
                 )
             except (OSError, ValueError, json.JSONDecodeError) as exc:
+                self.state.refresh()
                 events.append(
                     CopilotEvent(
                         "status",

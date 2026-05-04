@@ -319,6 +319,15 @@ def test_full_pipeline_runs_in_order_with_session_local_artifacts(
     assert sweep_event["parameters"]["min_mac"] == 0
 
     manifest = json.loads(artifact_manifest_path.read_text(encoding="utf-8"))
+    fingerprint_inputs = manifest["fingerprint_inputs"]
+    assert fingerprint_inputs["depth"] == 1
+    assert fingerprint_inputs["selected_columns"] == ["Gender"]
+    assert fingerprint_inputs["sort_by"] == "AE_Ratio_Amount"
+    assert fingerprint_inputs["min_mac"] == 0
+    source_hashes = fingerprint_inputs["source_hashes"]
+    assert "latest_visualization_path" not in source_hashes
+    assert not any(key.startswith("pre_call_") for key in source_hashes)
+
     manifest_paths = {Path(entry["path"]).name for entry in manifest["entries"]}
     assert "analysis_inforce.parquet" in manifest_paths
     assert "sweep_summary.csv" in manifest_paths
@@ -337,6 +346,59 @@ def test_full_pipeline_runs_in_order_with_session_local_artifacts(
         prepared_entry["source_artifacts"][0]["content_hash"]
         != prepared_entry["content_hash"]
     )
+
+
+def test_report_generation_preserves_latest_sweep_fingerprint(
+    tmp_path: Path,
+    sample_csv_path: Path,
+):
+    copilot = UnifiedCopilot(session_id="session-a", output_base_dir=tmp_path / "sessions")
+    list(copilot.process_message(f"Profile {sample_csv_path}"))
+    list(copilot.process_message("Run a 1-way sweep on Gender."))
+
+    sweep_fingerprint = copilot.state.latest_state_fingerprint
+    assert sweep_fingerprint is not None
+    artifact_manifest_path = copilot.state.artifact_manifest_path
+    assert artifact_manifest_path is not None
+    manifest_after_sweep = json.loads(artifact_manifest_path.read_text(encoding="utf-8"))
+    sweep_fingerprint_inputs = manifest_after_sweep["fingerprint_inputs"]
+
+    list(copilot.process_message("Generate the combined report."))
+
+    manifest_after_report = json.loads(artifact_manifest_path.read_text(encoding="utf-8"))
+    assert copilot.state.latest_state_fingerprint == sweep_fingerprint
+    assert manifest_after_report["state_fingerprint"] == sweep_fingerprint
+    assert manifest_after_report["fingerprint_inputs"] == sweep_fingerprint_inputs
+
+
+def test_validation_methodology_event_records_fail_status(
+    tmp_path: Path,
+    sample_dataframe: pd.DataFrame,
+):
+    invalid_path = tmp_path / "invalid_inforce.csv"
+    invalid_df = sample_dataframe.copy()
+    invalid_df.loc[0, "MAC"] = 2
+    invalid_df.to_csv(invalid_path, index=False)
+
+    copilot = UnifiedCopilot(session_id="session-a", output_base_dir=tmp_path / "sessions")
+    events = list(copilot.process_message(f"Profile {invalid_path} and validate the data."))
+
+    tool_results = [event.data["result"] for event in events if event.type == "tool_result"]
+    validation_result = next(result for result in tool_results if result["kind"] == "validation")
+    issue_count = len(validation_result["data"]["issues"])
+    assert validation_result["data"]["status"] == "FAIL"
+    assert issue_count > 0
+
+    methodology_log_path = copilot.state.methodology_log_path
+    assert methodology_log_path is not None
+    methodology_log = json.loads(methodology_log_path.read_text(encoding="utf-8"))
+    validation_event = next(
+        event
+        for event in methodology_log["events"]
+        if event["tool_name"] == "run_actuarial_data_checks"
+    )
+    assert validation_event["parameters"]["status"] == "FAIL"
+    assert validation_event["parameters"]["issue_count"] == issue_count
 
 
 def test_filtered_analysis_request_respects_filter_clause(
@@ -363,6 +425,8 @@ def test_runtime_preserves_tool_result_when_audit_log_is_malformed(
     list(copilot.process_message(f"Profile {sample_csv_path}"))
     assert copilot.state.methodology_log_path is not None
     copilot.state.methodology_log_path.write_text("{not-json", encoding="utf-8")
+    copilot.state.refresh()
+    assert copilot.state.audit_ready is False
 
     events = list(copilot.process_message("Show me the schema for the current dataset."))
 
@@ -373,6 +437,7 @@ def test_runtime_preserves_tool_result_when_audit_log_is_malformed(
         if event.type == "status"
     )
     assert copilot.state.prepared_dataset_ready is True
+    assert copilot.state.audit_ready is False
 
 
 def test_failed_tool_call_surfaces_exact_error_without_retrying(
