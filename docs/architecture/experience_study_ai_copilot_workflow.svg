@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="3400" height="1900" viewBox="0 0 3400 1900" role="img" aria-label="End-to-end framework for an auditable AI-powered experience study copilot">
+<defs>
+<marker id="arrowhead" markerWidth="18" markerHeight="14" refX="16" refY="7" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 18 7 L 0 14 z" fill="#d9e6f2"/></marker>
+</defs>
+<rect width="3400" height="1900" fill="#07111f"/>
+<text x="1700.0" y="82.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="52" font-weight="850" text-anchor="middle" dominant-baseline="middle" fill="#f6f8fb">End-to-end framework for an auditable AI-powered experience study copilot</text>
+<text x="1700.0" y="145.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="29" font-weight="500" text-anchor="middle" dominant-baseline="middle" fill="#b6c2d2">Deterministic actuarial tools generate audited artifacts before AI interprets sanitized cohort-level packets.</text>
+<rect x="64" y="394" width="2084" height="970" rx="40" fill="#0a1a2a" stroke="#27435e" stroke-width="2" opacity="0.58"/>
+<text x="98.0" y="378.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="850" text-anchor="start" fill="#58c77b" opacity="1">Deterministic before AI</text>
+<path d="M 2175 360 L 2175 1368" fill="none" stroke="#f4b860" stroke-width="9" stroke-dasharray="24 18" stroke-linecap="round"/>
+<rect x="1720" y="218" width="930" height="120" rx="28" fill="#241a08" stroke="#f4b860" stroke-width="3"/>
+<text x="2185.0" y="252.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="middle" dominant-baseline="middle" fill="#f4b860">Trust Boundary</text>
+<text x="2185.0" y="291.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" text-anchor="middle" dominant-baseline="middle" fill="#f6f8fb">AI receives only sanitized cohort-level aggregate artifacts</text>
+<text x="2185.0" y="321.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="23" font-weight="500" text-anchor="middle" dominant-baseline="middle" fill="#b6c2d2">never raw policy/claim-level data.</text>
+<rect x="90" y="430" width="520" height="900" rx="34" fill="#0f1d2e" stroke="#e7eef7" stroke-width="3"/>
+<rect x="93" y="433" width="514" height="16" rx="8" fill="#2f8bd8"/>
+<circle cx="142" cy="504" r="34" fill="#2f8bd8" stroke="#e7eef7" stroke-width="3"/>
+<text x="142.0" y="505.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="middle" dominant-baseline="middle" fill="#07111f">1</text>
+<text y="488.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="start" fill="#f6f8fb"><tspan x="194.0" dy="0.0">Input &amp; Data Pipeline</tspan></text>
+<text y="572.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="126.0" dy="0.0">User requests become session-scoped</tspan><tspan x="126.0" dy="25.2">workflow state.</tspan></text>
+<rect x="124" y="618" width="452" height="205" rx="20" fill="#102238" stroke="#2f8bd8" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="146.0" dy="0.0">Streamlit UI</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="146.0" dy="0.0">main.py app entry</tspan></text>
+<rect x="124" y="845" width="452" height="205" rx="20" fill="#102238" stroke="#2f8bd8" stroke-width="2.5" opacity="0.96"/>
+<text y="888.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="146.0" dy="0.0">Chat + Explorer</tspan></text>
+<text y="931.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="146.0" dy="0.0">Chat input, sweep table, AI</tspan><tspan x="146.0" dy="21.6">panel entry</tspan></text>
+<rect x="124" y="1072" width="452" height="205" rx="20" fill="#102238" stroke="#2f8bd8" stroke-width="2.5" opacity="0.96"/>
+<text y="1115.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="146.0" dy="0.0">Dataset Handling</tspan></text>
+<text y="1158.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="146.0" dy="0.0">CSV / Parquet / XLSX paths into</tspan><tspan x="146.0" dy="21.6">prepared data</tspan></text>
+<rect x="650" y="430" width="820" height="900" rx="34" fill="#0f1d2e" stroke="#e7eef7" stroke-width="3"/>
+<rect x="653" y="433" width="814" height="16" rx="8" fill="#58c77b"/>
+<circle cx="702" cy="504" r="34" fill="#58c77b" stroke="#e7eef7" stroke-width="3"/>
+<text x="702.0" y="505.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="middle" dominant-baseline="middle" fill="#07111f">2</text>
+<text y="488.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="start" fill="#f6f8fb"><tspan x="754.0" dy="0.0">Deterministic Analysis Pipeline</tspan></text>
+<text y="572.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="686.0" dy="0.0">Python tools own every actuarial calculation.</tspan></text>
+<rect x="684" y="618" width="365" height="319" rx="20" fill="#102238" stroke="#58c77b" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="706.0" dy="0.0">Skill Package</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="706.0" dy="0.0">native_tools.py registry</tspan><tspan x="706.0" dy="21.6">+ schemas</tspan></text>
+<rect x="1071" y="618" width="365" height="319" rx="20" fill="#102238" stroke="#58c77b" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="1093.0" dy="0.0">Profile / Schema /</tspan><tspan x="1093.0" dy="26.9">Validate</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="1093.0" dy="0.0">io.py + validation.py</tspan></text>
+<rect x="684" y="959" width="365" height="319" rx="20" fill="#102238" stroke="#58c77b" stroke-width="2.5" opacity="0.96"/>
+<text y="1002.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="706.0" dy="0.0">Feature Logic</tspan></text>
+<text y="1045.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="706.0" dy="0.0">Bands, regroups, filters</tspan></text>
+<rect x="1071" y="959" width="365" height="319" rx="20" fill="#102238" stroke="#58c77b" stroke-width="2.5" opacity="0.96"/>
+<text y="1002.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="1093.0" dy="0.0">Mortality A/E</tspan><tspan x="1093.0" dy="26.9">Sweep</tspan></text>
+<text y="1045.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="1093.0" dy="0.0">sweeps.py + ae_math.py</tspan><tspan x="1093.0" dy="21.6">confidence intervals</tspan></text>
+<rect x="1510" y="430" width="620" height="900" rx="34" fill="#0f1d2e" stroke="#e7eef7" stroke-width="3"/>
+<rect x="1513" y="433" width="614" height="16" rx="8" fill="#f0a646"/>
+<circle cx="1562" cy="504" r="34" fill="#f0a646" stroke="#e7eef7" stroke-width="3"/>
+<text x="1562.0" y="505.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="middle" dominant-baseline="middle" fill="#07111f">3</text>
+<text y="488.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="start" fill="#f6f8fb"><tspan x="1614.0" dy="0.0">Artifact &amp; Audit Pipeline</tspan></text>
+<text y="572.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="1546.0" dy="0.0">Outputs are saved, hashed, and made traceable.</tspan></text>
+<rect x="1544" y="618" width="265" height="319" rx="20" fill="#102238" stroke="#f0a646" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="1566.0" dy="0.0">Prepared Dataset</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="1566.0" dy="0.0">analysis_inforce.parquet</tspan></text>
+<rect x="1831" y="618" width="265" height="319" rx="20" fill="#102238" stroke="#f0a646" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="1853.0" dy="0.0">Sweep + Visuals</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="1853.0" dy="0.0">sweep_summary.csv +</tspan><tspan x="1853.0" dy="21.6">combined A/E HTML</tspan></text>
+<rect x="1544" y="959" width="265" height="319" rx="20" fill="#102238" stroke="#f0a646" stroke-width="2.5" opacity="0.96"/>
+<text y="1002.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="1566.0" dy="0.0">Methodology Log</tspan></text>
+<text y="1045.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="1566.0" dy="0.0">Append-only workflow</tspan><tspan x="1566.0" dy="21.6">events</tspan></text>
+<rect x="1831" y="959" width="265" height="319" rx="20" fill="#102238" stroke="#f0a646" stroke-width="2.5" opacity="0.96"/>
+<text y="1002.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="1853.0" dy="0.0">Manifest +</tspan><tspan x="1853.0" dy="26.9">Fingerprint</tspan></text>
+<text y="1045.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="1853.0" dy="0.0">Content hashes and</tspan><tspan x="1853.0" dy="21.6">freshness metadata</tspan></text>
+<rect x="2220" y="430" width="650" height="900" rx="34" fill="#0f1d2e" stroke="#e7eef7" stroke-width="3"/>
+<rect x="2223" y="433" width="644" height="16" rx="8" fill="#a888ff"/>
+<circle cx="2272" cy="504" r="34" fill="#a888ff" stroke="#e7eef7" stroke-width="3"/>
+<text x="2272.0" y="505.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="middle" dominant-baseline="middle" fill="#07111f">4</text>
+<text y="488.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="start" fill="#f6f8fb"><tspan x="2324.0" dy="0.0">Grounded AI Interpretation Pipeline</tspan></text>
+<text y="572.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2256.0" dy="0.0">AI receives sanitized aggregate packets only.</tspan></text>
+<rect x="2254" y="618" width="280" height="319" rx="20" fill="#102238" stroke="#a888ff" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="2276.0" dy="0.0">AI Packet Builder</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2276.0" dy="0.0">ai_packets.py</tspan><tspan x="2276.0" dy="21.6">allowlisted fields</tspan></text>
+<rect x="2556" y="618" width="280" height="319" rx="20" fill="#102238" stroke="#a888ff" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="2578.0" dy="0.0">Sanitization</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2578.0" dy="0.0">Sensitive dimensions +</tspan><tspan x="2578.0" dy="21.6">rare cohorts masked</tspan></text>
+<rect x="2254" y="959" width="280" height="319" rx="20" fill="#102238" stroke="#a888ff" stroke-width="2.5" opacity="0.96"/>
+<text y="1002.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="2276.0" dy="0.0">AI Orchestrator</tspan></text>
+<text y="1045.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2276.0" dy="0.0">ai_orchestrator.py with</tspan><tspan x="2276.0" dy="21.6">fallback mode</tspan></text>
+<rect x="2556" y="959" width="280" height="319" rx="20" fill="#102238" stroke="#a888ff" stroke-width="2.5" opacity="0.96"/>
+<text y="1002.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="2578.0" dy="0.0">Interpret Actions</tspan></text>
+<text y="1045.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2578.0" dy="0.0">Summarize sweep /</tspan><tspan x="2578.0" dy="21.6">explain cohort</tspan></text>
+<rect x="2910" y="430" width="400" height="900" rx="34" fill="#0f1d2e" stroke="#e7eef7" stroke-width="3"/>
+<rect x="2913" y="433" width="394" height="16" rx="8" fill="#dce9f7"/>
+<circle cx="2962" cy="504" r="34" fill="#dce9f7" stroke="#e7eef7" stroke-width="3"/>
+<text x="2962.0" y="505.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="middle" dominant-baseline="middle" fill="#07111f">5</text>
+<text y="488.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="30" font-weight="850" text-anchor="start" fill="#f6f8fb"><tspan x="3014.0" dy="0.0">Report / Output Pipeline</tspan></text>
+<text y="572.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2946.0" dy="0.0">Current interpretation plus planned</tspan><tspan x="2946.0" dy="25.2">handoff work.</tspan></text>
+<rect x="2944" y="618" width="332" height="114" rx="20" fill="#102238" stroke="#dce9f7" stroke-width="2.5" opacity="0.96"/>
+<text y="661.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="2966.0" dy="0.0">AI Panel</tspan></text>
+<text y="704.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2966.0" dy="0.0">Current: interpretation UI</tspan></text>
+<rect x="2944" y="754" width="332" height="114" rx="20" fill="#1b2431" stroke="#aeb7c4" stroke-width="2.5" stroke-dasharray="12 9" opacity="0.96"/>
+<text y="797.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#aeb7c4"><tspan x="2966.0" dy="0.0">Report Drafting</tspan></text>
+<text y="840.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2966.0" dy="0.0">Overview + findings draft</tspan></text>
+<rect x="2944" y="890" width="332" height="114" rx="20" fill="#1b2431" stroke="#aeb7c4" stroke-width="2.5" stroke-dasharray="12 9" opacity="0.96"/>
+<text y="933.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#aeb7c4"><tspan x="2966.0" dy="0.0">Editor &amp; Export</tspan></text>
+<text y="976.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2966.0" dy="0.0">Editable Markdown/ZIP</tspan></text>
+<rect x="2944" y="1026" width="332" height="114" rx="20" fill="#1b2431" stroke="#aeb7c4" stroke-width="2.5" stroke-dasharray="12 9" opacity="0.96"/>
+<text y="1069.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#aeb7c4"><tspan x="2966.0" dy="0.0">Style Reference Layer</tspan></text>
+<text y="1112.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2966.0" dy="0.0">Tone guidance only</tspan></text>
+<rect x="2944" y="1162" width="332" height="114" rx="20" fill="#102238" stroke="#dce9f7" stroke-width="2.5" opacity="0.96"/>
+<text y="1205.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="start" fill="#f6f8fb"><tspan x="2966.0" dy="0.0">Human actuarial sign-off</tspan></text>
+<text y="1248.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" text-anchor="start" fill="#b6c2d2"><tspan x="2966.0" dy="0.0">Actuary final review</tspan></text>
+<path d="M 628.0 880.0 L 630.0 880.0" fill="none" stroke="#d9e6f2" stroke-width="7" stroke-linecap="round" marker-end="url(#arrowhead)"/>
+<path d="M 1488.0 880.0 L 1490.0 880.0" fill="none" stroke="#d9e6f2" stroke-width="7" stroke-linecap="round" marker-end="url(#arrowhead)"/>
+<path d="M 2148.0 880.0 L 2200.0 880.0" fill="none" stroke="#f4b860" stroke-width="7" stroke-linecap="round" marker-end="url(#arrowhead)"/>
+<path d="M 2888.0 880.0 L 2890.0 880.0" fill="none" stroke="#d9e6f2" stroke-width="7" stroke-linecap="round" marker-end="url(#arrowhead)"/>
+<rect x="110" y="1460" width="1545" height="220" rx="26" fill="#142337" stroke="#6d8199" stroke-width="2"/>
+<text x="146.0" y="1510.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="850" text-anchor="start" fill="#f6f8fb" opacity="1">Implemented runtime and tools</text>
+<text x="146.0" y="1554.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2" opacity="1">main.py, core/copilot_agent.py, core/fallback_planner.py, core/prerequisite_guard.py,</text>
+<text x="146.0" y="1588.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2" opacity="1">core/session_state.py, skills/experience_study_skill/native_tools.py, schemas.py</text>
+<rect x="1720" y="1460" width="1545" height="220" rx="26" fill="#142337" stroke="#6d8199" stroke-width="2"/>
+<text x="1756.0" y="1510.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="24" font-weight="850" text-anchor="start" fill="#f6f8fb" opacity="1">Implemented deterministic, audit, and AI modules</text>
+<text x="1756.0" y="1554.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2" opacity="1">io.py, validation.py, feature_engineering.py, ae_math.py, sweeps.py, visualization.py,</text>
+<text x="1756.0" y="1588.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2" opacity="1">core/methodology_log.py, core/artifact_manifest.py, ai_packets.py, ai_sanitization.py,</text>
+<text x="1756.0" y="1622.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" text-anchor="start" fill="#b6c2d2" opacity="1">ai_validation.py, ai_fallbacks.py, ai_orchestrator.py</text>
+<text x="1700.0" y="1810.0" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="22" font-weight="500" text-anchor="middle" dominant-baseline="middle" fill="#8d9bad">Status: current deterministic workflow and AI interpretation are implemented; report handoff capabilities are roadmap items.</text>
+</svg>
